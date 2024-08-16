@@ -112,7 +112,6 @@ def data_period(data_xr_list, index_sel, var_data, aggregation_time, time_data,
     
     # Get the length of the dataset for each variable
     len_data = [len(data_xr_list[i].time) for i in range(len(index_list))]
-    print(len_data)
     
     # Ensure all variables are aligned in time
     data_sel = [[] for i in range(len(index_sel))]
@@ -129,8 +128,6 @@ def data_period(data_xr_list, index_sel, var_data, aggregation_time, time_data,
     # Else just copy
     else:
         data_sel = data_xr_list
-    
-    print(data_sel)
     
     # Initialise data array for yearly, seasonal or monthly data
     data_var = np.zeros((len(index_sel), 
@@ -183,21 +180,10 @@ def data_period(data_xr_list, index_sel, var_data, aggregation_time, time_data,
 #%% SETTINGS
 
 # List of all available variables
-# index_list = ["amoc26", "sstatlspg", "sssatlspg", "mldatlspg", "maxsfspg"]
 index_list = ["avsfspg", "sssatlspg", "mldatlspg", "subthspg", "rhoatlspg"]
 domain_list = ["stdmld", "std", "std", "std", "std"]
 var_data = ["msftbarot", "sos", "mlotst", "thetao", "rho" ]
 plot_label = ["Streamfunction", "SSS", "MLD", "Subsurface temp.", "Density"]
-
-# index_list = ["subthspg"]
-# domain_list = ["std"]
-# var_data = ["thetao"]
-# plot_label = ["SF"]
-
-# index_list = ["sssatlspg"]
-# domain_list = ["std"]
-# var_data = ["sos"]
-# plot_label = ["SSS"]
 
 # Set experiment id (only piControl atm)
 exp_id = "piControl"
@@ -215,51 +201,17 @@ save_check_fig = '/Users/3753808/Library/CloudStorage/' \
                  'OneDrive-UniversiteitUtrecht/Code/Tipping_links/' \
                  'Figs_SPG_PCMCI/Correlation_checks/'
                  
-# # Settings to get all data
-# time_data           = ["month"]
-# time_ind            = [[0,1,2,3,4,5,6,7,8,9,10,11]]
-# aggregation_time    = 1
+# Settings to get all data
+time_data           = ["month"]
+time_ind            = [[0,1,2,3,4,5,6,7,8,9,10,11]]
+aggregation_time    = 1
 
 # List of available models for all variables
 index_path, index_sel, mod_all_list, mod_list = \
     variable_selection(index_list, domain_list) 
 
-#%% ONE VARIABLE PLOTS
-# Number of years to plot
-yr = 6
-# plot_lim = [-5,10]
 
-# For each model
-for mod in mod_list:
-    # Only use the model versions of interest
-    if mod[-8::] not in ['r1i1p1f1','r1i1p1f2']:
-        continue
-    
-    # Get all data
-    data_var = data_load(mod, index_list, index_path, index_sel, mod_all_list)
-    # Print model and data length
-    print(mod)
-    print(np.min([len(data_var[i].time)/12 for i in range(len(index_list))]))
-    
-    # Plot timeseries
-    # fig, axs = plt.subplots(2,len(index_list), figsize=(6,8))
-    # fig.suptitle(mod)
-    # # for i in range(len(index_list)):
-    # # Full timeseries
-    # axs[0].plot(data_var[0].time, data_var[0][var_data[0]])
-    # # axs[0].set_ylim(plot_lim)
-    # axs[0].set_ylabel(plot_label[0])
-    # # Zoomed in part
-    # axs[1].plot(data_var[0].time[0:(yr*12)], data_var[0][var_data[0]][0:(yr*12)])
-    # # axs[1].set_ylim(plot_lim)
-    # axs[1].set_ylabel(plot_label[0])
-
-    # axs[0].grid()
-    # axs[1].grid()
-    # plt.tight_layout()
-    # plt.show()
-
-#%% PLOT TIMESERIES (FULL AND FIRST N YEARS)
+#%% PLOT TIMESERIES (FULL AND FIRST N YEARS) and print length
 
 # Number of years to plot
 yr = 6
@@ -275,7 +227,7 @@ for mod in mod_list:
     data_var = data_load(mod, index_list, index_path, index_sel, mod_all_list)
     # Print model and data length
     print(mod)
-    print([len(data_var[i].time) for i in range(len(index_list))])
+    print([len(data_var[i].time)/12 for i in range(len(index_list))])
     
     # Plot timeseries
     fig, axs = plt.subplots(2,len(index_list), figsize=(16,8))
@@ -296,19 +248,15 @@ for mod in mod_list:
     plt.show()
     
 #%% SCATTER PLOTS BETWEEN VARIABLES FOR SELECTED PERIOD
-"""
-PLOTS TO CHECK (LAG-1) CORRELATION BETWEEN THE VARIABLES. DOES IT MAKE SENSE?
-"""
-
-# Remove model with holes
-# mod_list_arr = mod_list.tolist()
-# mod_list_arr.remove('CESM2-WACCM-FV2_r1i2p2f1')
 
 time_data = ["season", "season", "season", "season", "season"]
 time_ind = [[0,1,2], [0,1,2], [0,1,2], [0,1,2], [0,1,2]]
 aggregation_time = 1
 
 plot_lim = [None,[-1.5,2], [-700,2000], [-1.5,1.5], [-1,2]]
+
+# Save plots if True
+savefig = False
 
 # For each model
 for mod in mod_list:
@@ -321,37 +269,16 @@ for mod in mod_list:
     data_per = data_period(data_var, index_sel, var_data, aggregation_time, 
                            time_data, time_ind)
     
-    # # Plot winter timeseries
-    # fig, axs = plt.subplots(2,len(index_list), figsize=(16,8))
-    # fig.suptitle(mod)
-    # for i in range(len(index_list)):
-    #     # Full timeseries
-    #     axs[0,i].plot(data_per[i])
-    #     axs[0,i].set_ylim(plot_lim[i])
-    #     axs[0,i].set_ylabel(plot_label[i])
-    #     # Zoomed in part
-    #     axs[1,i].plot(data_per[i][0:yr])
-    #     axs[1,i].set_ylim(plot_lim[i])
-    #     axs[1,i].set_ylabel(plot_label[i])
-    
-    #     axs[0,i].grid()
-    #     axs[1,i].grid()
-    # plt.tight_layout()
-    # plt.show()
-    
     # Scatter plots of correlation
     fig, axs = plt.subplots(len(index_list),len(index_list), figsize=(20,20))
     fig.suptitle(mod + ", " + repr(data_per.shape[1]) + " years", fontsize=20)
     for i in range(len(index_list)):
         for j in range(len(index_list)):
-            # Scatter lag-1 correlation
+            # Scatter lag-1 correlation (blue)
             axs[i,j].scatter(data_per[i,0:-1], data_per[j,1::], marker='.')
-            # Scatter autocorrelation
+            # Scatter autocorrelation (orange)
             if j != i:
                 axs[i,j].scatter(data_per[i], data_per[j], marker='.')
-            # if j == i:
-            #     axs[i,j].plot(np.arange(-1*10**11,1*10**11,1*10**10),
-            #                   np.arange(-1*10**11,1*10**11,1*10**10), c='k')
             
             # axs[i,j].set_xlim(plot_lim[i])
             # axs[i,j].set_ylim(plot_lim[j])
@@ -360,98 +287,12 @@ for mod in mod_list:
             axs[i,j].grid()
         
     plt.tight_layout()
-    # plt.savefig(save_check_fig + "Correlation_lag1_JFM_"+mod+".pdf")
+    if savefig:
+        plt.savefig(save_check_fig + "Correlation_lag1_JFM_"+mod+".pdf")
     plt.show()
-    
-    # # Scatter plots of correlation
-    # fig, axs = plt.subplots(len(index_list)-1,len(index_list)-1, figsize=(12,12))
-    # fig.suptitle(mod)
-    # for i in range(len(index_list)-1):
-    #     for j in range(i,len(index_list)-1):
-    #         axs[i,j].scatter(data_per[i], data_per[j+1])
-    #         # axs[i,j].set_xlim(plot_lim[i])
-    #         # axs[i,j].set_ylim(plot_lim[j+1])
-    #         axs[i,j].set_xlabel(plot_label[i])
-    #         axs[i,j].set_ylabel(plot_label[j+1])
-    #         axs[i,j].grid()
-    # plt.tight_layout()
-    # plt.show()
-    
-    # # Scatter plots of lag-1 autocorrelation
-    # fig, axs = plt.subplots(1,len(index_list), figsize=(16,6))
-    # fig.suptitle(mod)
-    # for i in range(len(index_list)):
-    #         axs[i].scatter(data_per[i,0:-1], data_per[i,1::])
-    #         # axs[i,j].set_xlim(plot_lim[i])
-    #         # axs[i,j].set_ylim(plot_lim[j+1])
-    #         axs[i].set_xlabel(plot_label[i]+",t")
-    #         axs[i].set_ylabel(plot_label[i]+",t+1")
-    #         axs[i].grid()
-    # plt.tight_layout()
-    # plt.show()
 
 
-#%%
 
-for i in range(1,2): #len(index_list)):
-    print(index_list[i])
-    # List of available models
-    index_path, index_sel, mod_all_list, mod_list = \
-        variable_selection([index_list[i]])
-    # print(mod_all_list)    
-    
-    # print(["amoc_m","amoc_y"][i])
-    # # List of available models
-    # index_path, index_sel, mod_all_list, mod_list = \
-    #     variable_selection([["amoc_m","amoc_y"][i]])
-    # # print(mod_all_list)  
-    
-    # Preprocessing
-    len_list = np.zeros(len(mod_list))
-    for m in range(len(mod_list)):
-        # print(mod_list[m])
-        data_var = data_check(mod_list[m], [index_list[i]], index_path, 
-                              index_sel, mod_all_list)
-        len_list[m] = len(data_var.time)
-        # Print model and data length
-        print(mod_list[m])
-        print(int(len_list[m]))
-        # try:
-        #     if any(np.isnan(data_var.msftyz)):
-        #         print("NaN")
-        #         print(data_var.msftyz)
-        
-        # except Exception:
-        #     print("msftmz")
-        #     continue
-        
-        
-    # for ll in len_list:
-    #     print(int(ll))
-    # for mod in mod_list:
-    #     print(mod)
-
-#%% TIMESERIES CHECK
-"""
-THINK ABOUT HOW TO DO THIS EFFICIENTLY AND E.G. GET MULTIPLE FIGURES IN ONE
-PLOT. HOW TO DEAL WITH THE DIFFERENT VARIABLE NAMES?
-"""
-yr = 10
-
-fig = plt.figure()
-plt.title(mod_list[m])
-plt.plot(data_var.time, data_var.tos)
-plt.ylabel("SST")
-plt.grid()
-plt.show()
-
-
-fig = plt.figure()
-plt.title(mod_list[m])
-plt.plot(data_var.time[0:(yr*12)], data_var.tos[0:(yr*12)])
-plt.ylabel("SST")
-plt.grid()
-plt.show()
 
 
 
