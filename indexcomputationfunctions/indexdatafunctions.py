@@ -5,7 +5,7 @@ Created on Mon Jun 12 12:33:03 2023
 
 @author: S.K.J. Falkena (s.k.j.falkena@uu.nl)
 
-
+Functions to download and preprocess CMIP data using wget files.
 
 """
 
@@ -17,10 +17,7 @@ import numpy as np
 import xarray as xr
 
 from netCDF4 import Dataset
-
-from pyesgf.logon import LogonManager
 from pyesgf.search import SearchConnection
-
 import xmip.preprocessing as xmip_pre
 
 
