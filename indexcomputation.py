@@ -35,6 +35,9 @@ from netCDF4 import Dataset
     
 
 #%% SET DIRECTORIES
+"""
+Set the directories where to run yourself!
+"""
 
 # Lorenz
 if os.getcwd()[0:9] == '/storage/':
@@ -67,17 +70,18 @@ else:
 
 #%% IMPORT FUNCTIONS 
 
-from indexcomputationfunctions.indexdatafunctions import login, \
-    connect_to_server, obtain_wgetlist, download_data, wrapper, \
-    download_areavar
+from indexcomputationfunctions.indexdatafunctions import connect_to_server, \
+    obtain_wgetlist, download_data, wrapper, download_areavar
 import indexcomputationfunctions.indexfunctions as indfunc
 
 
 #%% INPUT
+"""
+Set the index you want to compute.
+"""
 
-index_list = ["amoc_m", "amoc_y", "sstatlspg", "sssatlspg", "mldatlspg", 
-              "maxsfspg", "avsfspg", "varsfspg", "subthspg", "subsospg", 
-              "subrhospg", "sshatlspg", "rhoatlspg"]
+index_list = ["sstatlspg", "sssatlspg", "mldatlspg", "maxsfspg", "avsfspg", 
+              "sshatlspg", "rhoatlspg", "subthspg", "subsospg", "subrhospg"]
 
 # Lorenz, give index as input
 if os.getcwd()[0:9] == '/storage/':
@@ -684,265 +688,6 @@ def compute_index(indexname, dom, startmodel, dir_path, savedir_path):
 
 ci = compute_index(indexname, dom, startmod, dir_path, savedir_path)
 
-
-#%% TESTING FOR 3D VARIABLES
-
-# download_dir = '/Users/3753808/Library/CloudStorage/' \
-#                 'OneDrive-UniversiteitUtrecht/Code/Tipping_links/' \
-#                 'SPG_data/ACCESS-ESM1-5/thetao/'
-                
-# # Get list of files
-# file_list_all = os.listdir(download_dir)
-# # Sort list
-# file_list_all.sort()
-# # Remove status
-# file_list = [file for file in file_list_all if not file.startswith('.')]
-
-
-#%%
-
-# # Get the list of models and wgetfiles
-# area_dir = '/Users/3753808/Library/CloudStorage/' \
-#             'OneDrive-UniversiteitUtrecht/Code/Tipping_links/' \
-#             'CMIP6_wgetfiles/volcello/temp/subthspg/'
-
-# # Get list of files
-# area_list_all = os.listdir(area_dir)
-# # Sort list
-# area_list_all.sort()
-# # Remove status
-# area_list = [file for file in area_list_all if not file.startswith('.')]
-
-# for i in range(1):
-#     areaname = area_list[i]
-#     # Create path to file
-#     areapath = os.path.join(area_dir, areaname)
-#     # Load dataset
-#     area_dataset = Dataset(areapath, mode='r')
-#     # Transfer to xarray
-#     area_xr = xr.open_dataset(xr.backends.NetCDF4DataStore(area_dataset))
-    
-#     print(area_xr)
-
-#%% DEBUGGING
-
-# import os, subprocess
-
-# # Get the variable and index computation function 
-# var, index_func = index_settings(indexname)
-# print(index_func)
-
-# # Get a list of all wgetfiles for the given variable and experiment
-# wget_list, vardir_path = obtain_wgetlist(var, 'piControl', dir_path)
-
-# For every wget file
-# for wget_name in wget_list[startmod::]:
-    # Print the model (version) name
-#     print(wget_name)
-
-#%%
-# wget_name = wget_list[38]
-# print(wget_name)
-
-# # # Check whether it's the right model version
-# if wget_name.split('.')[3] not in ['r1i1p1f1','r1i1p1f2']:
-#     print("Model version: "+ wget_name.split('.')[3])
-#     continue
-
-# # If the index has already been computed, stop
-# if check_indexcomputed(indexname, dom, lev_bnd, savedir_path, 
-#                         wget_name) == True:
-#     # Skip to the next one
-#     continue
-#%% MORE VARIABLES
-"""
-Get directory and list of files for downloads data with multiple variables. 
-Ready for the index function.
-"""
-# wget_name = wget_list[30]
-# print(wget_name)
-
-# # Connect to a !server
-# conn = connect_to_server(0)
-
-# Download data
-# Initialise
-# download_dir = [[] for i in range(len(var))]
-# file_list = [[] for i in range(len(var))]
-# for i in range(len(var)): # For each variable
-#     # Get corresponding wget file
-#     wget_name = wget_list[i][mod_version_avail == 
-#                               mod_version]
-#     # Download data
-#     # Set where to save
-#     script_path = os.path.join(vardir_path[i], wget_name)
-#     # Initialise temporary directory to download to
-#     download_dir[i] = os.path.dirname(script_path) + "/temp/" + indexname 
-
-#     # Get list of files
-#     file_list_all = os.listdir(download_dir[i])
-#     # Sort list
-#     file_list_all.sort()
-#     # Remove status
-#     file_list[i] = [file for file in file_list_all if not file.startswith('.')]
-# #%%
-# # Check same number of files for each variable
-# file_list_len = [len(file_list[i]) for i in range(len(file_list))]
-# if all(ln == file_list_len[0] for ln in file_list_len):
-
-#     # Compute the index for all files and put them together
-#     print("Compute index")
-#     index = files_to_index(var, index_func, dom, lev_bnd, 
-#                            file_list, download_dir, dir_path)
-
-# #%% TESTING DENSITY
-
-# # Compute density anomaly
-# rho_ar = gsw.density.rho_t_exact(var_cs[1].sos, var_cs[0].tos, 0) - 1000
-# rho_cs = rho_ar.to_dataset().rename(sos='rho')
-# print(rho_cs)
-
-#%% ONE VARIABLE
-"""
-Get directory and list of files for downloads data with one variable. Ready 
-for the index function.
-"""
-download_dir = [[]];    file_list = [[]]
-# Get corresponding wget file
-wget_name = np.array(wget_list)[np.array(mod_version_avail) == mod_version][0]
-# Download data
-# Set where to save
-script_path = os.path.join(vardir_path, wget_name)
-# Initialise temporary directory to download to
-download_dir[0] = os.path.dirname(script_path) + "/temp/" + indexname 
-
-# Get list of files
-file_list_all = os.listdir(download_dir[0])
-# Sort list
-file_list_all.sort()
-# Remove status
-file_list[0] = [file for file in file_list_all if not file.startswith('.') and not file == 'Try']
-
-#%% CHECK FILE SIZES
-
-file_size = [[] for i in range(len(file_list[0]))]
-for i in range(len(file_list[0])):
-    file_size[i] = os.stat(download_dir[0]+'/'+file_list[0][i]).st_size
-
-dwnld_nr = 1
-while 0 in file_size and dwnld_nr <= 10:
-    print("File of 0 bytes.")
-    print("Download try: " + repr(dwnld_nr))
-    # Create new directory for downloading data again
-    download_dir_new = os.path.join(download_dir[0],"Try")
-    if not os.path.exists(download_dir_new):
-        os.makedirs(download_dir_new)
-    
-    # Download data again in new directory
-    download_dir_new, file_list_new = \
-        download_data(indexname, wget_name, vardir_path, download_dir_new)
-    
-    # Get list of new file sizes and replace zero byte files with new ones if 
-    # new is non-zero
-    file_size_new = [[] for i in range(len(file_list[0]))]
-    for i in range(len(file_list[0])):
-        file_size_new[i] = os.stat(download_dir_new+'/'+file_list_new[i]).st_size
-        if file_size[i] == 0 and file_size_new != 0:
-            os.replace(download_dir_new+'/'+file_list_new[i],
-                       download_dir[0]+'/'+file_list[0][i])
-    
-    for i in range(len(file_list[0])):
-        file_size[i] = os.stat(download_dir[0]+'/'+file_list[0][i]).st_size
-    print("Number of zero byte files: " + 
-          repr(np.count_nonzero(np.array(file_size) == 0)))
-    dwnld_nr += 1
-
-# MORGEN VERDER
-        
-
-#%%
-
-# Get list of files
-file_list_all = os.listdir(download_dir_new)
-# Sort list
-file_list_all.sort()
-# Remove status
-file_list_new = [file for file in file_list_all if not file.startswith('.')]
-
-
-#%%
-import random
-
-lst = np.zeros(10)
-cnt = 1
-
-while 0 in lst and cnt <= 15:
-    # print(cnt)
-    lst[random.randint(0,9)] = 1
-    # print("Number of zero byte files: " + 
-    #       repr(np.count_nonzero(np.array(lst) == 0)))
-    print(random.randint(0,3))
-    cnt += 1
-    
-
-
-#%% AREA CHECK
-
-# print(var_cs[0].attrs['external_variables'].split(' ')[0])
-# print(var_cs[0].attrs['parent_source_id'])
-
-# area_cs, area_filepath = download_areavar(
-#     indexname, file_list[k][i].split('_')[5],
-#     var_cs[0].attrs['external_variables'].split(' ')[0],
-#     var_cs[0].attrs['parent_source_id'], dir_path)
-
-#%%
-
-# # Compute the index for all files and put them together
-# print("Compute index")
-# index = files_to_index(var, index_func, dom, lev_bnd, file_list, download_dir, 
-#                         dir_path)
-
-# # Save the index
-# print("Save index")
-# save_index(indexname, index, savedir_path, wget_name)
-
-
-#%% Get CMCC right
-
-# from xmip.preprocessing import rename_cmip6, promote_empty_dims, \
-#     broadcast_lonlat, replace_x_y_nominal_lat_lon
-
-# ds = var_xr.copy()
-# ds = rename_cmip6(ds)
-# ds = promote_empty_dims(ds)
-# ds = broadcast_lonlat(ds)
-# # ds = correct_lon(ds)
-# ds = replace_x_y_nominal_lat_lon(ds)
-
-# var_new = var_xr.rename(latitude="x", longitude="y")
-# var_new = var_new.stack(ij=("i", "j"))
-# var_new = var_new.set_index(ij=["x","y"])
-
-#%%
-
-# var = ['tos','sos','psl']
-
-# # Initialise
-# wget_list = [[] for i in range(len(var))]
-# vardir_path = [[] for i in range(len(var))]
-# # Get a list of all wgetfiles for the each of the variables and given experiment
-# for i in range(len(var)):
-#     wget_list[i], vardir_path[i] = obtain_wgetlist(var[i], 'piControl', 
-#                                                    dir_path)
-# # Get a list of all models and versions
-# mod_version_list = [[0]*len(wget_list[i]) for i in range(len(var))]
-# for i in range(len(var)):
-#     for j in range(len(wget_list[i])):
-#         mod_version_list[i][j] = wget_list[i][j].split('.')[1]+"_"\
-#                                 +wget_list[i][j].split('.')[3]
-# # Get overlap between lists
-# mod_version_avail = list(set.intersection(*map(set,mod_version_list)))
 
 
 
