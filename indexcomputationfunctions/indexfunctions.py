@@ -5,7 +5,7 @@ Created on Mon Jun 12 13:48:09 2023
 
 @author: S.K.J. Falkena (s.k.j.falkena@uu.nl)
 
-
+Functions to compute the indices in the SPG mechanism.
 
 """
 
@@ -19,170 +19,6 @@ import gsw
 from indexcomputationfunctions.indexdatafunctions import  time_to_dayssince
     
 #%% INDEX FUNCTIONS
-
-def index_anomaly(var_index):
-    """
-    For an index compute the anomaly with respect to the time mean.
-
-    Parameters
-    ----------
-    var_index : The DataArray of the index.
-
-    Returns
-    -------
-    The DataArray of the index anomaly.
-
-    """
-    return var_index - var_index.mean(dim='time')
-
-
-def amocindex_atlantic(msf_xr):
-    """
-    Obtain the streamfunction over the Atlantic ocean from the full
-    streamfunction variable for one model. Contains a lot of corrections for
-    inconsistent naming within the different models and removes redundant
-    variables and dimensions.
-
-    Parameters
-    ----------
-    msf_xr : The DataArray of the meridional streamfunction.
-
-    Returns
-    -------
-    msf_atl : The DataArray containing the Atlantic streamfunction.
-
-    """
-    
-    # Convert all times to 'days since' for consistency
-    msf_xr = time_to_dayssince(msf_xr)
-    
-    # Rename rlat to lat
-    if 'rlat' in msf_xr.coords:
-        msf_xr = msf_xr.rename(rlat='lat', rlat_bnds='lat_bnds')
-        
-    # Rename olevel to lev
-    if 'olevel' in msf_xr.coords:
-        msf_xr = msf_xr.rename(olevel='lev', olevel_bounds='lev_bnds',
-                               time_bounds='time_bnds')
-        
-    # Get latitude coordinate instead of nav_lat
-    if 'nav_lat' in msf_xr.coords:
-        # Rename x and y to lat and lon
-        msf_xr = msf_xr.rename_dims(y='lat',x='lon')
-        # Change the lat from indices to values
-        lat_val = np.array(msf_xr.nav_lat).flatten()
-        lat_val[-1] = 90
-        msf_xr['lat'] = lat_val
-        # Drop redundant lat and lon dimensions
-        msf_xr = msf_xr.drop(["nav_lat", "nav_lon"])
-        # Squeeze out the lon dimension
-        msf_xr = msf_xr.squeeze("lon")
-        # Add lat_bnds to be consistent with other datasets
-        msf_xr["lat_bnds"] = ("lat", np.zeros(msf_xr["lat"].shape[0]))
-    
-    # Convert j-mean to lat
-    if 'j-mean' in msf_xr.coords:
-        # Load the j-mean to lat conversion
-        dir_path = '/Users/3753808/Library/CloudStorage/' \
-                    'OneDrive-UniversiteitUtrecht/Code/Tipping_links/' \
-                    'CMIP6_wgetfiles/'
-        file_name = 'wget-CNRM-areacello-4CO2.latdata.npy'
-        lat_30W_CNRM = np.load(os.path.join(dir_path, file_name), 
-                               allow_pickle=True)
-        # Rename j-mean to lat
-        msf_xr = msf_xr.rename({'j-mean': 'lat'})
-        # Create new latitude coordinate
-        if msf_xr["lat"].shape[0] == 1050:
-            msf_xr.coords["lat"] = ("lat", lat_30W_CNRM[0])
-        else:
-            msf_xr.coords["lat"] = ("lat", lat_30W_CNRM[1])
-        # Add lat_bnds to be consistent with other datasets
-        msf_xr["lat_bnds"] = ("lat", np.zeros(msf_xr["lat"].shape[0]))
-        # Rename other bounds variables
-        msf_xr = msf_xr.rename(lev_bounds='lev_bnds', time_bounds='time_bnds')
-    
-    # GFDL models
-    if 'y' in msf_xr.coords and not 'x' in msf_xr.coords:
-        # The y coordinate is latitude
-        msf_xr = msf_xr.rename(y='lat')
-        # Add lat_bnds and lev_bnds to be consistent with other datasets
-        msf_xr["lat_bnds"] = ("lat", np.zeros(msf_xr["lat"].shape[0]))
-        msf_xr["lev_bnds"] = ("lev", np.zeros(msf_xr["lev"].shape[0]))
-        
-    if all(crd in msf_xr.coords for crd in ['lat', 'y', 'x']):
-        # The y coordinate is latitude, x just floats arouns
-        msf_xr = msf_xr.rename(lat = 'lat0', y='lat')
-        # Add lat_bnds and lev_bnds to be consistent with other datasets
-        msf_xr["lat_bnds"] = ("lat", np.zeros(msf_xr["lat"].shape[0]))
-        msf_xr["lev_bnds"] = ("lev", np.zeros(msf_xr["lev"].shape[0]))
-    
-    # If the coordinate is called sector (which it should...)
-    if 'sector' in msf_xr.coords:
-        # Get rid of redundant spaces in sector names
-        sector_array = [x.strip() for x in np.array(msf_xr.sector)]
-        for i in range(len(sector_array)):
-            msf_xr.sector[i] = sector_array[i]
-        # Select Atlantic-Arctic Ocean
-        if b'atlantic_arctic_ocean' in msf_xr.sector:
-            msf_atl = msf_xr.where(msf_xr.sector==b'atlantic_arctic_ocean', 
-                                   drop=True)
-        elif b'a' in msf_xr.sector:
-            msf_atl = msf_xr.where(msf_xr.sector==b'a', drop=True)
-        else:
-            print("Different sector name.")
-
-    # If the coordinate is called basin (annoying, but ok)
-    elif 'basin' in msf_xr.coords or 'basin' in msf_xr.dims:
-        # Select Atlantic-Arctic Ocean
-        msf_atl = msf_xr.sel(basin=0)
-    
-    # If the coordinate is called 3basin (who even..., deep sigh)
-    elif '3basin' in msf_xr.coords:
-        # Select Atlantic-Arctic Ocean
-        msf_xr.coords["basin"] = ("3basin", [1,2,3])
-        msf_atl = msf_xr.where(msf_xr.basin==2, drop=True)
-        # Squeeze out the 3basin coordinate
-        msf_atl = msf_atl.squeeze("3basin")
-        # Drop basin coordinates
-        msf_atl = msf_atl.drop(["3basin","basin"])
-    
-    # Else it's named differently (nope, f**k off)
-    else:
-        print("The coordinate is not called 'sector' or 'basin', check name!")
-        
-    return msf_atl
-
-
-def amoc_index(msf_xr):
-    """
-    Obtain the AMOC index as the maximum value of the meridional streamfunction
-    at 26N in the Atlantic ocean.
-
-    Parameters
-    ----------
-    msf_xr : The DataArray of the meridional streamfunction.
-
-    Returns
-    -------
-    msf_max : The DataArray containing the maximum Atlantic streamfunction at 
-              26N.
-
-    """
-    # Load the dataset and select the Atlantic
-    msf_atl = amocindex_atlantic(msf_xr)
-    
-    # Only consider values around 26N
-    msf_26N = msf_atl.sel(lat=26, method="nearest")
-    
-    # Get list of dimensions minus time
-    dim_list = [d for d in msf_26N.dims]
-    dim_list.remove('time')
-    
-    # Get the maximum and drop bound variables
-    msf_max = msf_26N.max(dim=dim_list).drop(["lev_bnds","lat_bnds",
-                                              "time_bnds"])
-    return msf_max
-
 
 def regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean"):
     """
@@ -240,12 +76,6 @@ def regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean"):
     
     # For nearly all models
     if 'y' in var_cs.coords:
-        
-        # # For GISS models
-        # if var_cs.attrs['parent_source_id'][0:4] =='GISS' and \
-        #     len(area_cs.x) > len(var_cs.x)+ 10:
-            
-        
         # Check whether grids match
         if not (any(var_cs.x == area_cs.x) and any(var_cs.y == area_cs.y)):
             print("Coordinates mismatch")
@@ -285,21 +115,6 @@ def regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean"):
             # Computed maximum over region
             print("Compute regional maximum")
             var_reg_wmean = var_reg.vr.max(['y','x'], skipna=True)
-        elif func == "mean_var11y":
-            # Computed variance after 11-year window over region
-            print("Compute average weighted by variance (11y window)")
-            # if not any(var_cs.x == area_cs.x) and any(var_cs.y == area_cs.y):
-            #     if len(var_cs.x) == len(area_cs.x) and len(var_cs.x) == len(area_cs.x):
-            #         print("Coordinates mismatch")
-            #         area_reg['x'] = var_reg['x']
-            #         area_reg['y'] = var_reg['y']
-            var_reg_roll = var_reg.vr.rolling(time=11*12, center=True).mean()
-            var_reg_var = var_reg_roll.var(['time'], skipna=True)
-            weights_areavar = area_reg.areacell*var_reg_var
-            if np.max(weights_areavar) > 10**10:
-                weights_areavar = weights_areavar * 10**(-10)
-            var_reg_wmean = var_reg.vr.weighted(weights_areavar.fillna(0)).\
-                mean(['y','x'], skipna=True)
     
     elif var_cs.attrs['parent_source_id'] == 'CNRM-CM6-1-HR':
         print(var_cs.attrs['parent_source_id'])
@@ -312,19 +127,19 @@ def regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean"):
          
             # Select region
             if area_cs.lon.min() >= 0: #0-360 longitude convention
-                var_reg = var_cs.where(var_cs.lat < lat_bnd[2]).\
-                    where(var_cs.lat > lat_bnd[1]).\
-                    where(var_cs.lon < lon_bnd[3]).\
-                    where(var_cs.lon > lon_bnd[2])
+                var_reg = var_cs.where(var_t.lat < lat_bnd[2]).\
+                    where(var_t.lat > lat_bnd[1]).\
+                    where(var_t.lon < lon_bnd[3]).\
+                    where(var_t.lon > lon_bnd[2])
                 area_reg = area_cs.where(area_cs.lat < lat_bnd[2]).\
                     where(area_cs.lat > lat_bnd[1]).\
                     where(area_cs.lon < lon_bnd[3]).\
                     where(area_cs.lon > lon_bnd[2])
             else: # -180-180 longitude convention
-                var_reg = var_cs.where(var_cs.lat < lat_bnd[2]).\
-                    where(var_cs.lat > lat_bnd[1]).\
-                    where(var_cs.lon < lon_bnd[5]).\
-                    where(var_cs.lon > lon_bnd[4])
+                var_reg = var_cs.where(var_t.lat < lat_bnd[2]).\
+                    where(var_t.lat > lat_bnd[1]).\
+                    where(var_t.lon < lon_bnd[5]).\
+                    where(var_t.lon > lon_bnd[4])
                 area_reg = area_cs.where(area_cs.lat < lat_bnd[2]).\
                     where(area_cs.lat > lat_bnd[1]).\
                     where(area_cs.lon < lon_bnd[5]).\
@@ -350,12 +165,7 @@ def regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean"):
                     var_reg_done = var_reg_wmean.copy()
                     var_reg_new = var_reg.vr.max(['i','j'], skipna=True)
                     var_reg_wmean = xr.concat([var_reg_done,var_reg_new], dim='time')
-            elif func == "mean_var11y":
-                # Computed variance after 11-year window over region
-                print("Compute average weighted by variance (11y window)")
-                print("Need the full timeseries, unavailable.")
-                var_reg_wmean = None
-        
+
     # ICON and CMCC Model
     else:
         print("Else")
@@ -395,21 +205,6 @@ def regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean"):
                 var_reg_wmean = var_reg.vr.max(['x'], skipna=True)
             else: # CMCC
                 var_reg_wmean = var_reg.vr.max(['i','j'], skipna=True)
-        elif func == "mean_var11y":
-            # Computed variance after 11-year window over region
-            print("Compute average weighted by variance (11y window)")
-            var_reg_roll = var_reg.vr.rolling(time=11*12, center=True).mean()
-            var_reg_var = var_reg_roll.var(['time'], skipna=True)
-            var_reg_var['x'] = area_reg['x']    # Ensure on same grid
-            var_reg_var['y'] = area_reg['y']
-            if 'x' in var_cs.coords: # ICON
-                var_reg_wmean = var_reg.vr.weighted(area_reg.areacell.fillna(0)*\
-                                                    var_reg_roll.fillna(0)).\
-                    mean(['x'], skipna=True)
-            else: # CMCC
-                var_reg_wmean = var_reg.vr.weighted(area_reg.areacell.fillna(0)*\
-                                                    var_reg_roll.fillna(0)).\
-                    mean(['i', 'j'], skipna=True)
     
     # Rename to original variable
     var_reg_wmean.name = var_name
@@ -654,26 +449,6 @@ def avsfspg_index(var_cs, area_cs, dom):
         
     return regional_mean(var_cs, area_cs, lat_bnd, lon_bnd)
 
-def varsfspg_index(var_cs, area_cs):
-    """
-    Compute the average barotropic streamfunction weighted by the decadal 
-    variance over the subpolar gyre in the north Atlantic.
-
-    Parameters
-    ----------
-    var_cs : DataArray containing the barotropic streamfunction.
-    area_cs : DataArray containing the area corresponding to each gridpoint.
-
-    Returns
-    -------
-    var_reg_wmean : DataArray of the average barotropic streamfunction weighted 
-                    by the decadal variance over the selected region.
-
-    """
-    # Get lat-lon bounds
-    lat_bnd = [slice(45,64), 45,64]
-    lon_bnd = [slice(300,360), slice(-60,0), 300,360, -60,0]
-    return regional_mean(var_cs, area_cs, lat_bnd, lon_bnd, func="mean_var11y")
 
 #%% 3D VARIABLES
 
