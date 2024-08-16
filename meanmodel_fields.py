@@ -5,33 +5,27 @@ Created on Tue Dec 12 10:05:06 2023
 
 @author: S.K.J. Falkena (s.k.j.falkena@uu.nl)
 
+Code to compute model statistics, specifically time mean and count of the mixed
+layer deoth exceeding 1000m.
+
 """
 
 
 #%% IMPORT MODULES
 
-import sys
-import os, subprocess
+import os
 import numpy as np
 import xarray as xr
 import xesmf as xe
 
-import cftime
-
 from netCDF4 import Dataset
 
-from pyesgf.logon import LogonManager
-from pyesgf.search import SearchConnection
-
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from global_land_mask import globe
 
 import xmip.preprocessing as xmip_pre
 
-# from xmip.preprocessing import rename_cmip6, promote_empty_dims, \
-#     broadcast_lonlat, replace_x_y_nominal_lat_lon
     
 #%% IMPORT FUNCTIONS
 
@@ -39,9 +33,8 @@ import xmip.preprocessing as xmip_pre
 os.chdir('/Users/3753808/Library/CloudStorage/'
          'OneDrive-UniversiteitUtrecht/Code/Tipping_links/')
 
-from indexcomputationfunctions.indexdatafunctions import login, \
-    connect_to_server, obtain_wgetlist, download_data, wrapper, \
-    download_areavar, time_to_dayssince
+from indexcomputationfunctions.indexdatafunctions import obtain_wgetlist, \
+    download_data
 
 # Sjoerd's preprocessing wrapper
 from preprocess_sjoerd import correct_lon_180
@@ -408,85 +401,44 @@ def count_mld1000(file_list, dir_datafiles, threshold=1000, region=False):
     return var_mld               
 
 
-#%% COMPUTE TIME MEAN FOR EACH MODEL
+#%% COMPUTE TIME MEAN OR MLD EXCEEDING 1000M FOR EACH MODEL
+"""
+Compute the mean model value or count how often MLD exceeds 1000m or each 
+model. Only do this once and save. Everything after uses loads saved results.
+"""
 
-# # Variable to consider
-# # # var = "msftbarot"
-# var = "mlotst"
-# # # var = "tos"
+# Variable to consider
+var = "mlotst"
+compute_timemean = False
+setting = "mld1000"
 
-# # Get list of wget files and directory
-# wget_list, dir_wgetvar = obtain_wgetlist( var, "piControl", dir_wget)
-
-# mlotsts: Missing 1, 29, 31-35, 40, 46, 57-58, 60
-# # tos: Error ICON: DO LATER, download error NorESM2-LM (64-65)
-# # For each model (wget-file)
-# for file in wget_list[0:1]:
-#     print(file)
-#     # Download data
-#     dir_datafiles, file_list = download_data("modelmean", file, dir_wgetvar)
-#     # Compute time mean (2D)
-#     # var_mean = timemean_vars(file_list, dir_datafiles, False)
-#     var_mean = count_mld1000(file_list, dir_datafiles, 1000, False)
-
-#     # Save results
-#     save_dir = os.path.join(dir_save, var, 'piControl')
-#     # If the directory does not exist, create it
-#     if not os.path.exists(save_dir):
-#         os.makedirs(save_dir)
-#     # Save as netcdf
-#     var_mean.to_netcdf(os.path.join(save_dir, file.replace('.sh','.modelmean.nc')))
-#     print("Saved")
-
-
-#%% LOAD DATA FOR CHECK - KEEP IN CASE OF NEW BUGS
-
-# file = wget_list[0]
-# script_path = os.path.join(dir_wgetvar, file)
-# dir_datafiles = os.path.dirname(script_path) + "/temp/modelmean"
-
-# # Get list of files
-# file_list_all = os.listdir(dir_datafiles)
-# # Sort list
-# file_list_all.sort()
-# # Remove status
-# file_list = [file for file in file_list_all if not file.startswith('.')]
-
-# filename = file_list[0]
+if compute_timemean:
+    # Get list of wget files and directory
+    wget_list, dir_wgetvar = obtain_wgetlist( var, "piControl", dir_wget)
+    
+    # For each model (wget-file)
+    for file in wget_list:
+        print(file)
+        # Download data
+        dir_datafiles, file_list = download_data("modelmean", file, 
+                                                 dir_wgetvar)
+        # Compute time mean (2D)
+        if setting == "timemean":
+            var_mean = timemean_vars(file_list, dir_datafiles, False)
+        elif setting == "mld1000":
+            var_mean = count_mld1000(file_list, dir_datafiles, 1000, False)
+    
+        # Save results
+        save_dir = os.path.join(dir_save, var, 'piControl')
+        # If the directory does not exist, create it
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        # Save as netcdf
+        var_mean.to_netcdf(os.path.join(save_dir, 
+                                        file.replace('.sh','.modelmean.nc')))
+        print("Saved")
 
 
-#%% CHECK GRID - KEEP IN CASE OF NEW BUGS
-
-# ds = var_xr.copy()
-
-# # remove out of bounds values found in some
-# # models as missing values
-# ds["lon"] = ds["lon"].where(abs(ds["lon"]) <= 1000)
-# ds["lat"] = ds["lat"].where(abs(ds["lat"]) <= 1000)
-
-# # adjust lon convention
-# lon = ds["lon"].where(ds["lon"] <= 180, ds["lon"] - 360)
-# ds = ds.assign_coords(lon=lon)
-
-# if "lon_bounds" in ds.variables:
-#     lon_b = ds["lon_bounds"].where(ds["lon_bounds"] <= 180, ds["lon_bounds"] - 360)
-#     ds = ds.assign_coords(lon_bounds=lon_b)
-
-# fig = plt.figure(figsize=(15,10))
-# for i in range(0,384):
-#     plt.scatter(ds.isel(nlat=i).lon, ds.isel(nlat=i).lat, marker='.')
-# plt.ylim([20,90])
-# plt.xlim([-100,50])
-# plt.grid()
-# plt.show()
-
-# fig = plt.figure(figsize=(15,10))
-# for i in range(0,320):
-#     plt.scatter(ds.isel(nlon=i).lon, ds.isel(nlon=i).lat, marker='.')
-# plt.ylim([20,90])
-# plt.xlim([-100,50])
-# plt.grid()
-# plt.show()
 
 #%% FUNCTION FOR MODELMEAN
 
@@ -725,62 +677,20 @@ def plot_multimodelmean(var, period, var_modmean, cbar_max, cbar_min,
 #%% PLOT SETTINGS
 
 # Box settings
-# lon_bnd = np.array([[300,340],[300,317],[300,313],[305,325],[300,330]])
-# lat_bnd = np.array([[50,65],[54,63],[54,63],[53,60],[50,60]])
-# lins = ['-','--','--','-.',':']
+lon_bnd = np.array([[300,313]])
+lat_bnd = np.array([[54,63]])
+lins = ['-']
 
 
-# Box settings
-lon_bnd = np.array([[300,313],[305,325],[300,330]])
-lat_bnd = np.array([[54,63],[53,60],[50,60]])
-lins = ['-',':',':']
+#%% LOAD AND PLOT MIXED LAYER DEPTH
 
-# lon_bnd = np.array([[300,313]])
-# lat_bnd = np.array([[54,63]])
-# lins = ['-']
-
-
-#%% LOAD AND PLOT BAROTROPIC STREAMFUNCTION
-
-# Variable to consider
-var = "msftbarot"
-period = "DJF"
-cbar_label = "Barotropic Streamfunction (Sv)"
-
-# Compute multi-model mean
-mod_sub, var_reg_mean, var_modmean = modelmean(var, period, dir_save)
-
-# # Get the settings for the colorbar
-# cbar_max = 60;      cbar_min = -cbar_max;       cbar_step = 10
-# # Plot the model mean for each model
-# plot_modelmean(var, period, mod_sub, var_reg_mean.msftbarot, 
-#                cbar_max, cbar_min, cbar_step, cbar_label, 
-#                lon_bnd, lat_bnd, lins)
-
-
-# Get the settings for the colorbar
-cbar_max = 35;      cbar_min = -cbar_max;       cbar_step = 5
-# Plot the multi-model mean
-plot_multimodelmean(var, period, var_modmean.msftbarot, cbar_max, cbar_min, 
-                    cbar_step, cbar_label, lon_bnd, lat_bnd, lins)
-
-
-#%% LOAD MIXED LAYER DEPTH
-
-# Variable to consider
+# Variable and period to consider
 var = "mlotst"
 period = "DJF"
 cbar_label = "Mixed Layer Depth (m)"
 
 # Compute multi-model mean
 mod_sub, var_reg_mean, var_modmean = modelmean(var, period, dir_save)
-
-# # Get the settings for the colorbar
-# cbar_max = 1500;      cbar_min = 0;       cbar_step = 100
-# # Plot the model mean for each model
-# plot_modelmean(var, period, mod_sub, var_reg_mean.mlotst, 
-#                 cbar_max, cbar_min, cbar_step, cbar_label, 
-#                 lon_bnd, lat_bnd, lins)
 
 # Get the settings for the colorbar
 cbar_max = 700;      cbar_min = 0;       cbar_step = 50
@@ -789,233 +699,7 @@ plot_multimodelmean(var, period, var_modmean.mlotst, cbar_max, cbar_min,
                     cbar_step, cbar_label, lon_bnd, lat_bnd, lins, True)
 
 
-#%% LOAD SST
-
-# Variable to consider
-var = "tos"
-period = "DJF"
-cbar_label = "Sea Surface Temperature ($^\circ$C)"
-
-# Compute multi-model mean
-mod_sub, var_reg_mean, var_modmean = modelmean(var, period, dir_save)
-
-# # Get the settings for the colorbar
-# cbar_max = 20;      cbar_min = -2;       cbar_step = 2
-# # Plot the model mean for each model
-# plot_modelmean(var, period, mod_sub, var_reg_mean.tos, 
-#                cbar_max, cbar_min, cbar_step, cbar_label, 
-#                lon_bnd, lat_bnd, lins)
-
-# Get the settings for the colorbar
-cbar_max = 20;      cbar_min = -2;       cbar_step = 2
-# Plot the multi-model mean
-plot_multimodelmean(var, period, var_modmean.tos, cbar_max, cbar_min, 
-                    cbar_step, cbar_label, lon_bnd, lat_bnd, lins)
-
-
-#%% LOAD SSS
-
-# Variable to consider
-var = "sos"
-period = "DJF"
-cbar_label = "Sea Surface Salinity (psu)"
-
-# Compute multi-model mean
-mod_sub, var_reg_mean, var_modmean = modelmean(var, period, dir_save)
-
-# # Get the settings for the colorbar
-# cbar_max = 38;      cbar_min = 28;       cbar_step = 1
-# # Plot the model mean for each model
-# plot_modelmean(var, period, mod_sub, var_reg_mean.sos, 
-#                cbar_max, cbar_min, cbar_step, cbar_label, 
-#                lon_bnd, lat_bnd, lins)
-
-# Get the settings for the colorbar
-cbar_max = 38;      cbar_min = 28;       cbar_step = 1
-# Plot the multi-model mean
-plot_multimodelmean(var, period, var_modmean.sos, cbar_max, cbar_min, 
-                    cbar_step, cbar_label, lon_bnd, lat_bnd, lins)
-
-#%% LOAD SEA ICE CONCENTRATION
-
-# Variable to consider
-var = "siconc"
-period = "year"
-cbar_label = "Sea Ice Concentration (%)"
-
-# Compute multi-model mean
-mod_sub, var_reg_mean, var_modmean = modelmean(var, period, dir_save)
-
-# # Get the settings for the colorbar
-# cbar_max = 100;      cbar_min = 0;       cbar_step = 5
-# # Plot the model mean for each model
-# plot_modelmean(var, period, mod_sub, var_reg_mean.siconc, 
-#                cbar_max, cbar_min, cbar_step, cbar_label, 
-#                lon_bnd, lat_bnd, lins)
-
-# Get the settings for the colorbar
-cbar_max = 100;      cbar_min = 0;       cbar_step = 5
-# Plot the multi-model mean
-plot_multimodelmean(var, period, var_modmean.siconc, cbar_max, cbar_min, 
-                    cbar_step, cbar_label, lon_bnd, lat_bnd, lins)
-
-#%% LOAD SEA ICE THICKNESS
-
-# Variable to consider
-var = "sithick"
-period = "year"
-cbar_label = "Sea Ice Thickness (m)"
-
-# Compute multi-model mean
-mod_sub, var_reg_mean, var_modmean = modelmean(var, period, dir_save)
-
-# # Get the settings for the colorbar
-# cbar_max = 3;      cbar_min = -0.2;       cbar_step = .2
-# # Plot the model mean for each model
-# plot_modelmean(var, period, mod_sub, var_reg_mean.sithick, 
-#                cbar_max, cbar_min, cbar_step, cbar_label, 
-#                lon_bnd, lat_bnd, lins)
-
-# Get the settings for the colorbar
-cbar_max = 2;      cbar_min = -0.2;       cbar_step = .2
-# Plot the multi-model mean
-plot_multimodelmean(var, period, var_modmean.sithick, cbar_max, cbar_min, 
-                    cbar_step, cbar_label, lon_bnd, lat_bnd, lins)
-# ISSUE AS DOES NOT TAKE NAN INTO ACCOUNT AS 0, WHILE FOR MANY MODELS IT IS THAT
-
-
-#%% CHECK LAND MASK
-
-
-
-
-# newgrid = xe.util.grid_global(1, 1)
-# # Get whether the points are in the ocean
-# landmask = globe.is_ocean(newgrid.lat, newgrid.lon)
-# new = newgrid.merge(xr.Dataset({'mask':(('y','x'), landmask*1)}))
-
-#%%
-# newgrid = xr.Dataset(
-#     {"lat": (["lat"], np.arange(-89.75, 90, 1.0)),
-#       "lon": (["lon"], np.arange(-179.5, 180, 1.0)),})
-# lon_grid, lat_grid = np.meshgrid(newgrid.lon, newgrid.lat)
-# landmask = globe.is_ocean(lat_grid, lon_grid)
-# new = newgrid.merge(xr.Dataset({'mask':(('lat','lon'), landmask*1)}))
-
-# print(new)
-
-
-
-#%% COUNT MLD
-"""
-Get the regions in which the model mean exceeds 1000m. Really need to do this
-on the raw MLD data, not the model mean. Plan: First get here, then to on data
-and run on Lorenz.
-"""
-
-# Variable to consider
-var = "mlotst"
-per = "DJF"
-cbar_label = "Number of models with MLD > 1000m"
-saveplot = False
-
-
-# Set the path to the directory where the data is stored
-path_modmean = os.path.join( dir_save, var, "piControl")
-# Get a list of files in that directory
-file_list = [x for x in os.listdir( path_modmean ) if x[0] == 'C']
-file_list.sort()
-# And the corresponding models
-mod_list = np.array([filename.split('.')[1] + "_"  + filename.split('.')[3] 
-                     for filename in file_list])
-
-# Remove models with multiple versions
-for i in range(0,len(mod_list)):
-    if mod_list[i][-8::] not in ['r1i1p1f1','r1i1p1f2']:
-        mod_list[i] = 0
-    if i > 0 and mod_list[i][0:-9] == mod_list[i-1][0:-9]:
-        mod_list[i] = 0
-mod_sub = [i for i in mod_list if i != '0']
-
-# Set count to zero for the first model
-count = 0
-
-# Append data for all models
-for mod in mod_sub:
-    # Open dataset
-    var_mean = xr.open_dataset( os.path.join(path_modmean, 
-                                np.array(file_list)[mod_list == mod][0]) )
-    # Select the period (year, DJF, month) and region
-    var_reg = var_mean.sel(period=per, lat=slice(40,80), lon=slice(-80,20))
-    
-    # Only keep MLD exceeding a threshold (ones, rest is zero)
-    var_big = var_reg.where(var_reg.mlotst > 1000).notnull()*1.
-
-    # Append in over the models
-    if count == 0: # Create for first file
-        var_big_mean = var_big.copy()
-    else: # Append the others
-        var_big_mean = xr.concat([var_big_mean, var_big.copy()], dim="model")
-        
-    count=+1
-
-# Compute model mean
-var_mod1000_sum = var_big_mean.sum(['model'], skipna=True)
-# Only keep gridpoints above zero
-var_mod1000 = var_mod1000_sum.where(var_mod1000_sum.mlotst > 0.0)
-
-#%%
-
-cbar_max = 10;      cbar_min = 0;       cbar_step = 1
-# Compute colorbar
-cbar_nr = 2*cbar_max /cbar_step
-# cbar_tick = range( cbar_min, cbar_max+cbar_step, cbar_step )
-cbar_tick = np.arange( cbar_min, cbar_max+cbar_step, cbar_step )
-
-# Box settings
-linc = 'k';         linw = 1.5;
-
-fig0 = plt.figure(figsize=(12,7))
-
-ax0 = fig0.add_subplot(1,1,1, 
-                       projection=ccrs.Orthographic( central_longitude=320, 
-                                                    central_latitude=55))
-ax0.coastlines(color='tab:gray', linewidth=0.5)
-ax0.gridlines(color='tab:gray', linestyle=':')
-
-# Plot data
-ax0.set_title("MLD > 1000", fontsize=18)
-sub0 = ax0.contourf(var_mod1000.lon, var_mod1000.lat, var_mod1000.mlotst, 
-                    cbar_tick, transform=ccrs.PlateCarree(), 
-                    cmap = plt.cm.get_cmap('bwr',cbar_nr), 
-                    vmin=cbar_min, vmax=cbar_max, extend='both')
-# Set colorbar
-cbar = fig0.colorbar( sub0, ticks=cbar_tick )
-cbar.ax.tick_params(labelsize=12)
-cbar.set_label(cbar_label, fontsize=14) 
-
-# Set boxes
-for i in range(len(lon_bnd)):
-    l1 = plt.plot(np.arange(lon_bnd[i,0], lon_bnd[i,1]+1,1), 
-                  lat_bnd[i,0]*np.ones(lon_bnd[i,1]-lon_bnd[i,0]+1), 
-                  c=linc, lw=linw, ls=lins[i], transform=ccrs.PlateCarree())
-    l2 = plt.plot(lon_bnd[i,0]*np.ones(lat_bnd[i,1]-lat_bnd[i,0]+1), 
-                  np.arange(lat_bnd[i,0],lat_bnd[i,1]+1,1), 
-                  c=linc, lw=linw, ls=lins[i], transform=ccrs.PlateCarree())
-    l3 = plt.plot(np.arange(lon_bnd[i,0], lon_bnd[i,1]+1,1), 
-                  lat_bnd[i,1]*np.ones(lon_bnd[i,1]-lon_bnd[i,0]+1), 
-                  c=linc, lw=linw, ls=lins[i], transform=ccrs.PlateCarree())
-    l4 = plt.plot(lon_bnd[i,1]*np.ones(lat_bnd[i,1]-lat_bnd[i,0]+1), 
-                  np.arange(lat_bnd[i,0],lat_bnd[i,1]+1,1), 
-                  c=linc, lw=linw, ls=lins[i], transform=ccrs.PlateCarree())
-
-# Save if ordered
-# if saveplot == True:
-#     plt.savefig(dir_save+"/figs/"+var+"_"+per+"_count_mld1000_modmean.pdf")
-plt.show()
-
-
-#%%
+#%% LOAD MLD EXCEEDENCE DATA
 
 # Variable to consider
 var = "mlotst"
@@ -1063,7 +747,8 @@ var_reg_mean = var_reg_all.where(var_reg_all.mlotst > 0.0)
 
 # Compute model mean
 # var_modmean_count = var_reg_mean.count(dim='model')
-var_modmean_count = var_reg_mean.where(var_reg_mean.mlotst > mld_bound).count(dim='model')
+var_modmean_count = var_reg_mean.where(var_reg_mean.mlotst > mld_bound)\
+                        .count(dim='model')
 # Only keep gridpoints above zero
 var_modmean = var_modmean_count.where(var_modmean_count.mlotst > 0.0)
 
@@ -1123,16 +808,16 @@ for i in range(len(mod_sub)):
                       c=linc, lw=linw, ls=lins[i], transform=ccrs.PlateCarree())
     
     # Save if ordered
-    # if saveplot == True:
-    #     plt.savefig(dir_save+"/figs/models/mld1000/"+per+"/"+var+"_"
-    #                 +per+"_"+mod+"_mld1000.pdf")
+    if saveplot == True:
+        plt.savefig(dir_save+"/figs/models/mld1000/"+per+"/"+var+"_"
+                    +per+"_"+mod+"_mld1000.pdf")
     plt.show()
     
     
-#%%
+#%% PLOT NUMBER OF MODELS EXCEEDING WITH MLD EXCEEDING 1000M (PAPER)
     
 cbar_label = "Number of models"
-saveplot=True
+saveplot=False
 
 cbar_max = 24;      cbar_min = 0;       cbar_step = 2
 # Compute colorbar
@@ -1152,7 +837,8 @@ ax0.coastlines(color='tab:gray', linewidth=0.5)
 ax0.gridlines(color='tab:gray', linestyle=':')
 
 # Plot data
-ax0.set_title("MLD > 1000m in at least "+repr(mld_bound)+" model years", fontsize=24)
+ax0.set_title("MLD > 1000m in at least "+repr(mld_bound)+" model years", 
+              fontsize=24)
 sub0 = ax0.contourf(var_modmean.lon, var_modmean.lat, var_modmean.mlotst, 
                     cbar_tick, transform=ccrs.PlateCarree(), 
                     cmap = plt.cm.get_cmap('Oranges',cbar_nr), 
@@ -1180,5 +866,6 @@ for i in range(len(lon_bnd)):
 
 # Save if ordered
 if saveplot == True:
-    plt.savefig(dir_save+"/figs/"+var+"_"+per+"_count_mld1000_"+repr(mld_bound)+"_poster.pdf")
+    plt.savefig(dir_save+"/figs/"+var+"_"+per+"_count_mld1000_"\
+                +repr(mld_bound)+"_poster.pdf")
 plt.show()
