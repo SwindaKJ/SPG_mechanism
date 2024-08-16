@@ -5,8 +5,8 @@ Created on Mon Dec 19 10:43:56 2022
 
 @author: S.K.J. Falkena (s.k.j.falkena@uu.nl)
 
-Explore how to download CMIP data, do something with it, end remove without
-flooding memory.
+Code to download wgetfiles of CMIP data. These are used to download the actual
+data in the index computation without flooding the memory with all data.
 
 """
 
@@ -16,7 +16,6 @@ import os
 import numpy as np
 
 # esgf 
-from pyesgf.logon import LogonManager
 from pyesgf.search import SearchConnection
 
 
@@ -28,26 +27,6 @@ node_list = ['https://esgf-node.llnl.gov/esg-search',
              'https://esgf.ceda.ac.uk/esg-search']
 
 #%% FUNCTIONS
-
-def login():
-    """
-    Log on to esgf server. Required for downloading CMIP data.
-    
-    Returns
-    -------
-    lm : logged on logonmanager
-    
-    """
-    
-    # Set logon manager
-    lm = LogonManager()
-    # Login to esgf using openid
-    lm.logon_with_openid('https://esgf-node.llnl.gov/esgf-idp/openid/sfalkena', 
-                         password='CMIPdl22!', bootstrap=True)
-    # Check whether log on was succesful
-    lm.is_logged_on()
-    return lm
-
 
 def models_avail(conn, var_list=['msftmz','msftyz'],
                  exp_id='piControl', freq='mon', 
@@ -370,23 +349,15 @@ def download_wget(conn, dir_path, mod, var, exp_id='piControl', freq=None,
 
 # Get connection
 conn = SearchConnection(node_list[0], distrib=True)
-# Login to esgf
-# lm = login()
 
-# Get list of available models for AMOC variables
-# source_list = models_avail(conn)
-# source_list = models_avail(conn, var_list=['msftbarot'])
-# source_list = models_avail(conn, var_list=['msftmzmpa'])
+# Get list of available models for a selected SPG variable
 source_list = models_avail(conn, var_list=['thetao'])
-# Delete CAS-ESM2-0 (no area-files, barely any documentation)
-# source_list.remove('CAS-ESM2-0')
 
 # Set directory and facets
 dir_path = '/Users/3753808/Library/CloudStorage/' \
             'OneDrive-UniversiteitUtrecht/Code/Tipping_links/CMIP6_wgetfiles/'
 facets = 'project, experiment_id, source_id, variable, grid_label'
 
-#%%
 # Download the area files for each model
 for mod in source_list:
     print(mod)
@@ -395,12 +366,8 @@ for mod in source_list:
 
 #%% VARIABLE DOWNLOAD
 
-# Set variable-lists
-vars_amoc = ['msftmz', 'msftyz']
-vars_area = ['areacello','areacella']
-
 # List of variables to download
-var_list = ['sos', 'tos']#['msftbarot', 'tos', 'sos', 'mlotst', 'so', 'thetao']
+var_list = ['msftbarot', 'tos', 'sos', 'mlotst', 'thetao', 'so']
 
 # Set experiment id and frequency
 exp_id = 'piControl'
@@ -408,8 +375,6 @@ freq = 'mon'
 
 # Get connection
 conn = SearchConnection(node_list[0], distrib=True)
-# Login to esgf
-# lm = login()
 
 # Download the variables for each model
 for mod in source_list: 
