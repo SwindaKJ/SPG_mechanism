@@ -26,25 +26,6 @@ import xmip.preprocessing as xmip_pre
 
 #%% LOGIN
 
-def login():
-    """
-    Log on to esgf server. Required for downloading CMIP data.
-    
-    Returns
-    -------
-    lm : logged on logonmanager
-    
-    """
-    
-    # Set logon manager
-    lm = LogonManager()
-    # Login to esgf using openid
-    lm.logon_with_openid('https://esgf-node.llnl.gov/esgf-idp/openid/sfalkena', 
-                         password='CMIPdl22!', bootstrap=True)
-    # Check whether log on was succesful
-    lm.is_logged_on()
-    return lm
-
 def connect_to_server(number):
     """
     Connect to one of esgf servers
@@ -157,39 +138,6 @@ def obtain_wgetlist( var, exp_id, dir_path ):
     
     return wget_list, vardir_path
 
-
-# def wrapper(ds):
-#     """
-#     A preproccessing wrapper for CMIP data using XMIP. It should yield
-#     consistent naming, promote empty dimensions and broadcast onto a lon-lat
-#     grid.
-
-#     Parameters
-#     ----------
-#     ds : A CMIP Dataset.
-
-#     Returns
-#     -------
-#     ds : The same Dataset after preproccessing.
-
-#     """
-#     ds = ds.copy()
-#     # Don't do wrapper for CMCC, just rename
-#     if ds.attrs['parent_source_id'][0:4] == "CMCC":
-#         print("CMCC")
-#         ds = ds.rename(latitude="lat", longitude="lon")
-#     elif ds.attrs['parent_source_id'][0:4] == "CNRM":
-#         print("CNRM")
-#         ds = ds.rename(x="i", y="j")
-#     else:
-#         ds = rename_cmip6(ds)
-#         ds = promote_empty_dims(ds)
-#         ds = broadcast_lonlat(ds)
-#         # ds = correct_lon(ds)
-#         ds = replace_x_y_nominal_lat_lon(ds)
-    
-#     return ds
-
 def rename_latlon(var_xr):
     """
     A function to rename x and y (or i and j) to lat and lon and drop 
@@ -276,22 +224,6 @@ def wrapper(ds):
     # GFDL model
     if "x_deg" in ds.coords:
         ds = ds.rename({'x_deg': 'x', 'y_deg':'y'})
-    
-    # # drop unused coordinates (all except lon, lat, lev, x, y, time, time_bnds)
-    # _drop_coords = [
-    #     "bnds", "vertex", "lon_bounds", "lat_bounds", "lat_bnds", "lon_bnds", 
-    #     "height","lat_verticies", "lon_verticies"
-    #     ]
-    # ds = ds.drop_vars(_drop_coords, errors="ignore")
-    
-    # # drop unused dimensions
-    # _drop_dims = [
-    #     "verticies", "vertex", "lon_bounds", "lat_bounds", "lon_bnds", 
-    #     "lat_bnds", "bounds", "bnds", "height"
-    # ]
-    # ds = ds.drop_dims(_drop_dims, errors="ignore")
-    
-    # rename time_bounds to time_bnds
     try:
         ds = ds.rename({"time_bounds": "time_bnds"})
     except ValueError:
