@@ -6,7 +6,6 @@ Created on Tue Apr 30 10:31:52 2024
 @author: S.K.J. Falkena (s.k.j.falkena@uu.nl)
 
 PCMCI+ applied to the relevant SPG variables. 
-IMPORTANT: USE THE + ONE FOR DIRECT LINKS!
 
 """
 
@@ -101,7 +100,7 @@ def variable_selection(index_selection, dom, exp_id="piControl",
 
 def remove_doublemodels(mod_list):
     """
-    Remove double models based on a reasonable ordering after 
+    Remove double models, i.e. with multiple versions or ensemble members.
 
     Parameters
     ----------
@@ -119,8 +118,8 @@ def remove_doublemodels(mod_list):
             mod_list[i] = 0
     return [i for i in mod_list if i != '0']
 
-def data_prep(mod, index_selection, index_path, index_sel, mod_list_var, 
-              aggregation_time, time_data, time_ind=None, detrend=False):
+def data_prep(mod, index_path, index_list, mod_list_var, aggregation_time, 
+              time_data, time_ind=None, detrend=False):
     """
     Load the data for each model (all variables)
 
@@ -134,23 +133,29 @@ def data_prep(mod, index_selection, index_path, index_sel, mod_list_var,
     aggregation_time : The time over which to aggregate the data (years).
     time_data : A list of the types of data, annual, seasonal or monthly mean.
     time_ind : Optional. Indicate the month(s) to consider for seasonal and 
-        monthly data The default is None.
+        monthly data. 
+        The default is None.
+    detrend : Optional. Indicate whether or not to detrend the data.
+        The default is False.
 
     Returns
     -------
     data_var : A list containing the timeseries of each of the variables.
+    trend_slope : A list of the slope in the timeseries of each of the 
+        variables.
+    
 
     """
     
     # Create lists to store data arrays and info
-    data_xr_list = [[] for i in range(len(index_sel))]
-    var_data = [[] for i in range(len(index_sel))]
-    len_data = np.zeros(len(index_sel))
-    trend_slope = np.zeros(len(index_sel))
+    data_xr_list = [[] for i in range(len(index_list))]
+    var_data = [[] for i in range(len(index_list))]
+    len_data = np.zeros(len(index_list))
+    trend_slope = np.zeros(len(index_list))
     # Load data + information
-    for i in range(len(index_sel)):
+    for i in range(len(index_list)):
         # Select file names
-        file = np.array(index_sel[i])[mod_list_var[i]==mod][0]
+        file = np.array(index_list[i])[mod_list_var[i]==mod][0]
         # Create path to file
         filepath = os.path.join(index_path[i], file)
         # Load dataset
@@ -165,15 +170,15 @@ def data_prep(mod, index_selection, index_path, index_sel, mod_list_var,
         len_data[i] = len(data_xr.time)
     
     # Ensure all variables are aligned in time
-    data_sel = [[] for i in range(len(index_sel))]
+    data_sel = [[] for i in range(len(index_list))]
     # If not all timeseries have the same length
     if not all(i == len_data[0] for i in len_data):
         # Create list of start and end dates
-        start_list = [data_xr_list[i].time[0] for i in range(len(index_sel))]
-        end_list = [data_xr_list[i].time[-1] for i in range(len(index_sel))]
+        start_list = [data_xr_list[i].time[0] for i in range(len(index_list))]
+        end_list = [data_xr_list[i].time[-1] for i in range(len(index_list))]
         # Select the part corresponding to the latest start data and earliest 
         # end date
-        for i in range(len(index_sel)):
+        for i in range(len(index_list)):
             data_sel[i] = data_xr_list[i].sel(time = slice(np.amax(start_list), 
                                                            np.amin(end_list)))
     # Else just copy
@@ -181,10 +186,10 @@ def data_prep(mod, index_selection, index_path, index_sel, mod_list_var,
         data_sel = data_xr_list
     
     # Initialise data array for yearly, seasonal or monthly data
-    data_var = np.zeros((len(index_sel), 
+    data_var = np.zeros((len(index_list), 
                          int(len(data_sel[0].time) /12 /aggregation_time)))
     # For each variable
-    for i in range(len(index_sel)):
+    for i in range(len(index_list)):
         # Depending on the time indication for that variable
         if time_data[i] == "year":
             # Moving average over 1 year
@@ -229,13 +234,6 @@ def data_prep(mod, index_selection, index_path, index_sel, mod_list_var,
             trend_slope[i] = model_lr.coef_    
         else:
             data_var[i] = data_var_anom
-        
-        # fig = plt.figure()
-        # plt.title(mod + ", " + index_selection[i])
-        # plt.plot(time_array, data_var_anom)
-        # plt.plot(time_array, data_var)
-        # plt.grid()
-        # plt.show()
     
     return data_var, trend_slope
 
@@ -243,7 +241,7 @@ def data_prep(mod, index_selection, index_path, index_sel, mod_list_var,
 ### Causal discovery ###
 
 def data_discovery(data_var, index_selection, max_lag=10, alpha=0.05, msr='pc',
-                   pcmci_method = 'pcmci+'):
+                   pcmci_method='pcmci+'):
     """
     Run PCMCI for the selected variables and choices of data.
 
@@ -317,10 +315,6 @@ def data_discovery(data_var, index_selection, max_lag=10, alpha=0.05, msr='pc',
     parcorr = np.array([results['val_matrix'], results['p_matrix']])
     
     return dataframe, pcmci, results, names, corr, parcorr
-
-
-### Causal effect ###
-
 
 ### Plotting ###
 
@@ -406,26 +400,33 @@ dir_save_fig = '/Users/3753808/Library/CloudStorage/' \
                 'OneDrive-UniversiteitUtrecht/Code/Tipping_links/' \
                 'Figs_SPG_PCMCI/'
 
-# Set indices to consider (all)
-index_selection     = ["avsfspg", "sssatlspg", "mldatlspg", "subthspg", "rhoatlspg"]
-domain_selection    = ["stdmld", "std", "std", "std", "std"]
-time_data           = ["season", "season", "season", "season", "season"]
-time_ind            = [[0,1,2], [0,1,2], [0,1,2], [0,1,2], [0,1,2]]
-
-# index_selection     = ["avsfspg", "sssatlspg", "mldatlspg", "subthspg"]
-# domain_selection    = ["stdmld", "std", "std", "std"]
-# time_data           = ["season", "season", "season", "season"]
-# time_ind            = [[0,1,2], [0,1,2], [0,1,2], [0,1,2]]
-
 aggregation_time    = 1
 max_lag             = 10
 minlen              = 98
+
+# Whether or not to include density
+varincl = "std"
+
+# Preset indices
+if varincl == "std": #all
+    # Indices
+    index_selection     = ["avsfspg", "sssatlspg", "mldatlspg", "subthspg", "rhoatlspg"]
+    domain_selection    = ["stdmld", "std", "std", "std", "std"]
+    time_data           = ["season", "season", "season", "season", "season"]
+    time_ind            = [[0,1,2], [0,1,2], [0,1,2], [0,1,2], [0,1,2]]
+
+elif varincl == "norho": #norho
+    # Indices
+    index_selection     = ["avsfspg", "sssatlspg", "mldatlspg", "subthspg"]
+    domain_selection    = ["stdmld", "std", "std", "std"]
+    time_data           = ["season", "season", "season", "season"]
+    time_ind            = [[0,1,2], [0,1,2], [0,1,2], [0,1,2]]
 
 
 #%% PREPROCESSING
 
 # List of available models
-index_path, index_sel, mod_list_var, mod_list = \
+index_path, index_list, mod_list_var, mod_list = \
     variable_selection(index_selection, domain_selection) 
 # Remove other versions
 mod_list = remove_doublemodels(mod_list)
@@ -435,19 +436,25 @@ data_var = [[] for m in range(len(mod_list))]
 trend_slope = np.zeros((len(mod_list), len(index_selection)))
 for m in range(len(mod_list)):
     # Get data
-    data_var[m], trend_slope[m] = data_prep(mod_list[m], index_selection, 
-                                            index_path, index_sel, mod_list_var, 
-                                            aggregation_time, time_data, 
-                                            time_ind, False)
+    data_var[m], trend_slope[m] = data_prep(mod_list[m], index_path, index_list, 
+                                            mod_list_var, aggregation_time, 
+                                            time_data, time_ind, False)
 
-#%%% CAUSAL DISCOVERY CHOICES
+#%%% CAUSAL DISCOVERY
+"""
+Run once, save and then load from then on.
 
+"""
+
+# Settings
 metric      = 'rpc'
 pcmci_meth  = 'pcmci'
 alpha_lev   = 0.05
 
+savedata = False
 
-#% CAUSAL DISCOVERY: ALL VARIABLES
+
+#% ALL VARIABLES
 """
 Discover the network using all variables of interest.
 
@@ -475,23 +482,27 @@ for m in range(len(mod_list)):
 graph_all = np.array(graph_list_all)
 
 # Save results
-# np.savez(dir_save_data+"causaldiscovery_norho_allvariables_"+pcmci_meth+"_"+metric+
-#           "_alpha"+repr(alpha_lev)+"_lag"+repr(max_lag)+".npz", 
-#           mod_list=mod_list, corr=corr_all, parcorr=parcorr_all, graph=graph_all)
+if savedata:
+    np.savez(dir_save_data+"causaldiscovery_norho_allvariables_"+pcmci_meth+
+             "_"+metric+"_alpha"+repr(alpha_lev)+"_lag"+repr(max_lag)+".npz", 
+             mod_list=mod_list, corr=corr_all, parcorr=parcorr_all, 
+             graph=graph_all)
 
 
-#% CAUSAL DISCOVERY: ALL PAIRS
+#% ALL PAIRS
 """
 Discover the network considering all pairs separately.
 
 """
 
 # Initialise correlations, partial correlations and graphs
-corr_2p = np.empty((len(mod_list),len(index_selection),len(index_selection),2,2,2,max_lag+1))
-parcorr_2p = np.empty((len(mod_list),len(index_selection),len(index_selection),2,2,2,max_lag+1))
+corr_2p = np.empty((len(mod_list),len(index_selection),len(index_selection),
+                    2,2,2,max_lag+1))
+parcorr_2p = np.empty((len(mod_list),len(index_selection),len(index_selection),
+                       2,2,2,max_lag+1))
 graph_list_theoryp = [[[[] for j in range(len(index_selection))]
-                 for i in range(len(index_selection))] 
-                for m in range(len(mod_list))]
+                       for i in range(len(index_selection))] 
+                      for m in range(len(mod_list))]
 
 # Store the dataframes
 dataframe_2p = [[[[] for j in range(len(index_selection))]
@@ -504,7 +515,8 @@ for m in range(len(mod_list)):
     for i in range(len(index_selection)):
         for j in range(len(index_selection)):
             if j > i:
-                dataframe_2p[m][i][j], pcmci, results, names, corr_2p[m,i,j], parcorr_2p[m,i,j] = \
+                dataframe_2p[m][i][j], pcmci, results, names, corr_2p[m,i,j], \
+                parcorr_2p[m,i,j] = \
                     data_discovery(np.array([data_var[m][i],data_var[m][j]]), 
                                    [index_selection[i],index_selection[j]], 
                                    max_lag, alpha=alpha_lev, msr=metric, 
@@ -532,12 +544,14 @@ for m in range(len(mod_list)):
 graph_2p = np.array(graph_list_theoryp)
 
 # Save results
-# np.savez(dir_save_data+"causaldiscovery_norho_allpairs_"+pcmci_meth+"_"+metric+
-#           "_alpha"+repr(alpha_lev)+"_lag"+repr(max_lag)+".npz", 
-#           mod_list=mod_list, corr=corr_2p, parcorr=parcorr_2p, graph=graph_2p)
+if savedata:
+    np.savez(dir_save_data+"causaldiscovery_norho_allpairs_"+pcmci_meth+"_"
+             +metric+"_alpha"+repr(alpha_lev)+"_lag"+repr(max_lag)+".npz", 
+             mod_list=mod_list, corr=corr_2p, parcorr=parcorr_2p, 
+             graph=graph_2p)
 
 
-#% CAUSAL DISCOVERY: SETS OF VARIABLES FOLLOWING THEORY
+#% THEORY
 """
 Discover the network considering the variables following the theoretical
 framwework.
@@ -545,10 +559,10 @@ framwework.
 """
 
 # Initialise correlations, partial correlations and graphs
-corr_theory = np.empty((len(mod_list),len(index_selection),2,3,3,max_lag+1))
-parcorr_theory = np.empty((len(mod_list),len(index_selection),2,3,3,max_lag+1))
+corr_theory       = np.empty((len(mod_list),len(index_selection),2,3,3,max_lag+1))
+parcorr_theory    = np.empty((len(mod_list),len(index_selection),2,3,3,max_lag+1))
 graph_list_theory = [[[] for i in range(len(index_selection))] 
-              for m in range(len(mod_list))]
+                     for m in range(len(mod_list))]
 
 # Store the dataframes
 dataframe_theory = [[[] for i in range(len(index_selection))] 
@@ -560,20 +574,27 @@ for m in range(len(mod_list)):
     for i in range(len(index_selection)):
         # Run PCMCI
         if i == 0:
-            dataframe_theory[m][i], pcmci, results, names, corr_theory[m,i], parcorr_theory[m,i] = \
-                data_discovery(np.array([data_var[m][-1],data_var[m][0],data_var[m][1]]), 
-                               [index_selection[-1],index_selection[0],index_selection[1]], 
+            dataframe_theory[m][i], pcmci, results, names, corr_theory[m,i], \
+            parcorr_theory[m,i] = \
+                data_discovery(np.array([data_var[m][-1],data_var[m][0],
+                                         data_var[m][1]]), 
+                               [index_selection[-1],index_selection[0],
+                                index_selection[1]], 
                                max_lag, alpha=alpha_lev, msr=metric, 
                                pcmci_method=pcmci_meth)
         elif i+1 < len(index_selection):
-            dataframe_theory[m][i], pcmci, results, names, corr_theory[m,i], parcorr_theory[m,i] = \
+            dataframe_theory[m][i], pcmci, results, names, corr_theory[m,i], \
+            parcorr_theory[m,i] = \
                 data_discovery(data_var[m][i-1:i+2], index_selection[i-1:i+2], 
                                max_lag, alpha=alpha_lev, msr=metric, 
                                pcmci_method=pcmci_meth)
         elif i+1 == len(index_selection):
-            dataframe_theory[m][i], pcmci, results, names, corr_theory[m,i], parcorr_theory[m,i] = \
-                data_discovery(np.array([data_var[m][-2],data_var[m][-1],data_var[m][0]]), 
-                               [index_selection[-2],index_selection[-1],index_selection[0]], 
+            dataframe_theory[m][i], pcmci, results, names, corr_theory[m,i], \
+            parcorr_theory[m,i] = \
+                data_discovery(np.array([data_var[m][-2],data_var[m][-1],
+                                         data_var[m][0]]), 
+                               [index_selection[-2],index_selection[-1],
+                                index_selection[0]], 
                                max_lag, alpha=alpha_lev, msr=metric, 
                                pcmci_method=pcmci_meth)
         # Store graph
@@ -590,365 +611,16 @@ for m in range(len(mod_list)):
 graph_theory = np.array(graph_list_theory)
 
 # Save results
-# np.savez(dir_save_data+"causaldiscovery_norho_theory_"+pcmci_meth+"_"+metric+
-#           "_alpha"+repr(alpha_lev)+"_lag"+repr(max_lag)+".npz", 
-#           mod_list=mod_list, corr=corr_theory, parcorr=parcorr_theory, 
-#           graph=graph_theory)
+if savedata:
+    np.savez(dir_save_data+"causaldiscovery_norho_theory_"+pcmci_meth+"_"
+             +metric+"_alpha"+repr(alpha_lev)+"_lag"+repr(max_lag)+".npz", 
+             mod_list=mod_list, corr=corr_theory, parcorr=parcorr_theory, 
+             graph=graph_theory)
 
-
-
-#%% CAUSAL EFFECT: THEORY
-
-estimated_causal_effects = np.zeros((len(mod_list), len(index_selection)))
-
-# Theoretical link between two variables
-theory_graph = np.array([['','-->',''],
-                         ['<--','','-->'],
-                         ['','<--','']])
-
-# For each model
-for m in range(len(mod_list)):
-    for i in range(len(index_selection)):
-        # Set causal effect stuff
-        causal_effect = CausalEffects(theory_graph, graph_type='dag', 
-                                      X=[(1,0)], Y=[(2,0)], S=None, 
-                                      hidden_variables=None, verbosity=1)
-        
-        # Fit causal effect model from observational data
-        causal_effect.fit_total_effect(
-                dataframe=dataframe_theory[m][i], 
-                estimator=LinearRegression(),
-                adjustment_set='optimal',
-                conditional_estimator=None,  
-                data_transform=None,
-                mask_type=None,
-                )
-        
-        # Predict effect of interventions
-        intervention_data = 1.*np.ones((1, 1))
-        
-        estimated_causal_effects[m,i] = causal_effect.predict_total_effect( 
-                intervention_data=intervention_data,
-        #         conditions_data=conditions_data,
-                )
-
-#%% CAUSAL EFFECT: SETS OF VARIABLES INCL. LAG (BOTH)
-
-estimated_causal_effects_lag = np.zeros((len(mod_list),len(index_selection),2))
-
-# Theoretical link between two variables
-theory_graph_lag = np.array([[['','-->'],['-->','-->'],['','']],
-                              [['<--',''],['','-->'],['-->','-->']],
-                              [['',''],['<--',''],['','-->']]])
-
-# theory_graph_lag = np.array([[['','-->'],['','-->'],['','']],
-#                               [['',''],['','-->'],['-->','-->']],
-#                               [['',''],['<--',''],['','-->']]])
-
-
-# For each model
-for m in range(len(mod_list)):
-    for i in range(len(index_selection)):
-        # Set causal effect stuff
-        causal_effect_lag = CausalEffects(theory_graph_lag, 
-                                          graph_type='stationary_dag', 
-                                          X=[(1,0),(1,-1)], Y=[(2,0)], S=None, 
-                                          hidden_variables=None, verbosity=1)
-        
-        # Fit causal effect model from observational data
-        causal_effect_lag.fit_total_effect(
-                dataframe=dataframe_theory[m][i], 
-                estimator=LinearRegression(),
-                adjustment_set='optimal',
-                conditional_estimator=None,  
-                data_transform=None,
-                mask_type=None,
-                )
-        
-        # Predict effect of interventions
-        intervention_data = [np.array([[1,0]]), np.array([[0,1]])]
-        
-        for j in range(len(intervention_data)):
-            estimated_causal_effects_lag[m,i,j] = causal_effect_lag.predict_total_effect( 
-                    intervention_data=intervention_data[j],
-            #         conditions_data=conditions_data,
-                    )
-
-#%% CAUSAL EFFECT: SETS OF VARIABLES from #models
-
-# estimated_causal_effects_list = np.zeros((len(mod_list),len(index_selection),2))
-estimated_causal_effects_list = np.zeros((len(mod_list),len(index_selection),7))
-
-# Theoretical link between three variables following theory: 0.01
-# theory_graph_list = [np.array([[['','-->'],['','-->'],['','']],
-#                               [['',''],['','-->'],['','-->']],
-#                               [['',''],['',''],['','-->']]]),
-#                       np.array([[['','-->'],['','-->'],['','']],
-#                                 [['',''],['','-->'],['-->','-->']],
-#                                 [['',''],['<--',''],['','-->']]]),
-#                       np.array([[['','-->'],['-->','-->'],['','']],
-#                                 [['<--',''],['','-->'],['-->','']],
-#                                 [['',''],['<--',''],['','-->']]]),
-#                       np.array([[['','-->'],['-->',''],['','']],
-#                                 [['<--',''],['','-->'],['-->','-->']],
-#                                 [['',''],['<--',''],['','-->']]]),
-#                       np.array([[['','-->'],['-->','-->'],['','']],
-#                                 [['<--',''],['','-->'],['','-->']],
-#                                 [['',''],['',''],['','-->']]])]
-# X_list = [[(1,-1)],
-#           [(1,0),(1,-1)],
-#           [(1,0)],
-#           [(1,0),(1,-1)],
-#           [(1,-1)]]
-# intervention_list = [[1.*np.ones((1, 1))],
-#                       [np.array([[1,0]]), np.array([[0,1]])],
-#                       [1.*np.ones((1, 1))],
-#                       [np.array([[1,0]]), np.array([[0,1]])],
-#                       [1.*np.ones((1, 1))]]
-
-# Theoretical link between three variables following theory: 0.05
-# theory_graph_list = [np.array([[['','-->'],['-->','-->'],['','']],
-#                               [['<--',''],['','-->'],['','-->']],
-#                               [['',''],['',''],['','-->']]]),
-#                       np.array([[['','-->'],['','-->'],['','']],
-#                                 [['',''],['','-->'],['-->','-->']],
-#                                 [['',''],['<--',''],['','-->']]]),
-#                       np.array([[['','-->'],['-->','-->'],['','']],
-#                                 [['<--',''],['','-->'],['-->','-->']],
-#                                 [['',''],['<--',''],['','-->']]]),
-#                       np.array([[['','-->'],['-->','-->'],['','']],
-#                                 [['<--',''],['','-->'],['-->','-->']],
-#                                 [['',''],['<--',''],['','-->']]]),
-#                       np.array([[['','-->'],['-->','-->'],['','']],
-#                                 [['<--',''],['','-->'],['-->','-->']],
-#                                 [['',''],['<--',''],['','-->']]])]
-# X_list = [[(1,-1)],
-#           [(1,0),(1,-1)],
-#           [(1,0),(1,-1)],
-#           [(1,0),(1,-1)],
-#           [(1,0),(1,-1)]]
-# intervention_list = [[1.*np.ones((1, 1))],
-#                       [np.array([[1,0]]), np.array([[0,1]])],
-#                       [np.array([[1,0]]), np.array([[0,1]])],
-#                       [np.array([[1,0]]), np.array([[0,1]])],
-#                       [np.array([[1,0]]), np.array([[0,1]])]]
-
-
-# Theoretical link between three variables following theory: 0.05, lag 5
-theory_graph_list = [np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
-                              [['<--','','','','',''],['','-->','-->','-->','-->','-->'],['','-->','','','','']],
-                              [['','','','','',''],['','','','','',''],['','-->','','','','']]]),
-                      np.array([[['','-->','-->','-->','-->','-->'],['','-->','','','',''],['','','','','','']],
-                                [['','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
-                                [['','','','','',''],['<--','','','','',''],['','-->','','','','']]]),
-                      np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
-                                [['<--','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
-                                [['','','','','',''],['<--','','','','',''],['','-->','-->','','','']]]),
-                      np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
-                                [['<--','','','','',''],['','-->','-->','','',''],['-->','-->','','','','']],
-                                [['','','','','',''],['<--','','','','',''],['','-->','','','','']]]),
-                      np.array([[['','-->','-->','','',''],['-->','-->','','','',''],['','','','','','']],
-                                [['<--','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
-                                [['','','','','',''],['<--','','','','',''],['','-->','-->','-->','-->','-->']]])]
-X_list = [[(1,-1), (2,-1)],
-          [(1,0),(1,-1), (2,-1)],
-          [(1,0),(1,-1), (2,-1),(2,-2)],
-          [(1,0),(1,-1), (2,-1)],
-          [(1,0),(1,-1), (2,-1),(2,-2),(2,-3),(2,-4),(2,-5)]]
-intervention_list = [[np.array([[1,0]]), np.array([[0,1]])],
-                      [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
-                      [np.array([[1,0,0,0]]), np.array([[0,1,0,0]]), 
-                        np.array([[0,0,1,0]]), np.array([[0,0,0,1]])],
-                      [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
-                      [np.array([[1,0,0,0,0,0,0]]), np.array([[0,1,0,0,0,0,0]]), 
-                        np.array([[0,0,1,0,0,0,0]]), np.array([[0,0,0,1,0,0,0]]),
-                        np.array([[0,0,0,0,1,0,0]]), np.array([[0,0,0,0,0,1,0]]), 
-                        np.array([[0,0,0,0,0,0,1]])]]
-
-
-# No Rho
-# theory_graph_list = [np.array([[['','-->','-->'],['','-->','-->'],['','','']],
-#                                 [['','',''],['','-->','-->'],['','-->','']],
-#                                 [['','',''],['','',''],['','-->','']]]),
-#                         np.array([[['','-->','-->'],['','-->',''],['','','']],
-#                                   [['','',''],['','-->',''],['-->','-->','']],
-#                                   [['','',''],['<--','',''],['','-->','']]]),
-#                         np.array([[['','-->',''],['-->','-->',''],['','','']],
-#                                   [['<--','',''],['','-->',''],['-->','-->','']],
-#                                   [['','',''],['<--','',''],['','-->','-->']]]),
-#                         np.array([[['','-->',''],['-->','-->',''],['','','']],
-#                                   [['<--','',''],['','-->','-->'],['','-->','-->']],
-#                                   [['','',''],['','',''],['','-->','-->']]])]
-# X_list = [[(1,-1), (2,-1)],
-#           [(1,0),(1,-1), (2,-1)],
-#           [(1,0),(1,-1), (2,-1),(2,-2)],
-#           [(1,-1),(1,-2), (2,-1),(2,-2)]]
-# intervention_list = [[np.array([[1,0]]), np.array([[0,1]])],
-#                      [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
-#                      [np.array([[1,0,0,0]]), np.array([[0,1,0,0]]), 
-#                       np.array([[0,0,1,0]]), np.array([[0,0,0,1]])],
-#                      [np.array([[1,0,0,0]]), np.array([[0,1,0,0]]), 
-#                       np.array([[0,0,1,0]]), np.array([[0,0,0,1]])]]
-
-# No Rho, up to lag-5
-# theory_graph_list = [np.array([[['','-->','-->','','',''],['','-->','-->','','',''],['','','','','','']],
-#                                 [['','','','','',''],['','-->','-->','-->','-->','-->'],['','-->','','','','']],
-#                                 [['','','','','',''],['','','','','',''],['','-->','-->','','','']]]),
-#                         np.array([[['','-->','-->','-->','-->','-->'],['','-->','','','',''],['','','','','','']],
-#                                   [['','','','','',''],['','-->','-->','','',''],['-->','-->','','','','']],
-#                                   [['','','','','',''],['<--','','','','',''],['','-->','','','','']]]),
-#                         np.array([[['','-->','-->','','',''],['-->','-->','','','',''],['','','','','','']],
-#                                   [['<--','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
-#                                   [['','','','','',''],['<--','','','','',''],['','-->','-->','','','']]]),
-#                         np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
-#                                   [['<--','','','','',''],['','-->','-->','','',''],['','-->','-->','','','']],
-#                                   [['','','','','',''],['','','','','',''],['','-->','-->','-->','-->','-->']]])]
-# X_list = [[(1,-1), (2,-1),(2,-2)],
-#           [(1,0),(1,-1), (2,-1)],
-#           [(1,0),(1,-1), (2,-1),(2,-2)],
-#           [(1,-1),(1,-2), (2,-1),(2,-2),(2,-3),(2,-4),(2,-5)]]
-# intervention_list = [[np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
-#                      [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
-#                      [np.array([[1,0,0,0]]), np.array([[0,1,0,0]]), 
-#                       np.array([[0,0,1,0]]), np.array([[0,0,0,1]])],
-#                      [np.array([[1,0,0,0,0,0,0]]), np.array([[0,1,0,0,0,0,0]]), 
-#                       np.array([[0,0,1,0,0,0,0]]), np.array([[0,0,0,1,0,0,0]]),
-#                       np.array([[0,0,0,0,1,0,0]]), np.array([[0,0,0,0,0,1,0]]), 
-#                       np.array([[0,0,0,0,0,0,1]])]]
-
-# For each model
-for m in range(len(mod_list)):
-    for i in range(len(index_selection)):
-        # Set causal effect stuff
-        causal_effect_lag = CausalEffects(theory_graph_list[i], 
-                                          graph_type='stationary_dag', 
-                                          X=X_list[i], Y=[(2,0)], S=None, 
-                                          hidden_variables=None, verbosity=1)
-        
-        # Fit causal effect model from observational data
-        causal_effect_lag.fit_total_effect(
-                dataframe=dataframe_theory[m][i], 
-                estimator=LinearRegression(),
-                adjustment_set='optimal',
-                conditional_estimator=None,  
-                data_transform=None,
-                mask_type=None,
-                )
-        
-        # Predict effect of interventions
-        intervention_data = intervention_list[i]
-        
-        for j in range(len(intervention_data)):
-            estimated_causal_effects_list[m,i,j] = causal_effect_lag.predict_total_effect( 
-                    intervention_data=intervention_data[j],
-            #         conditions_data=conditions_data,
-                    )
-
-#%% Scatter plot
-
-link_names = ["SPG to SSS", "SSS to MLD", "MLD to SubT", "SubT to Rho",
-              "Rho to SPG"]
-col_modlist = ['tab:blue','tab:orange','tab:orange','tab:green','tab:green',
-                'tab:green','tab:green','tab:red','tab:red','tab:purple',
-                'tab:purple','tab:brown','tab:brown','tab:brown','tab:brown',
-                'tab:brown','tab:pink','tab:pink','tab:gray','tab:gray',
-                'tab:olive','tab:olive','gold','chocolate','tab:cyan','tab:cyan',
-                'tab:cyan','black','lightgreen','lightgreen','navy','navy']
-mark_modlist = ['o','o','X','o','X','v','P','o','X','o','X','o','X','v','P',
-                'd','o','X','o','X','o','X','o','o','o','X','v','o','o','X',
-                'o','X']
-
-# link_names = ["SPG to SSS", "SSS to MLD", "MLD to SubT", 
-#               "SubT to SPG"]
-# col_modlist = ['tab:blue','tab:orange','tab:orange','tab:green','tab:green',
-#                 'tab:green','tab:green','tab:red','tab:red','tab:purple',
-#                 'tab:purple','tab:brown','tab:brown','tab:brown','tab:brown',
-#                 'tab:brown','tab:brown','tab:pink','tab:pink','tab:gray','tab:gray',
-#                 'tab:olive','tab:olive','gold','chocolate','tab:cyan','tab:cyan',
-#                 'tab:cyan','black','lightgreen','lightgreen','navy','navy']
-# mark_modlist = ['o','o','X','o','X','v','P','o','X','o','X','o','X','v','P',
-#                 'd','*','o','X','o','X','o','X','o','o','o','X','v','o','o','X',
-#                 'o','X']
-
-col_modsig = np.array(col_modlist.copy())
-
-
-# Get color when significant
-sig_list = np.array([parcorr_theory[:,i,1,1,2,0] 
-                      for i in range(len(index_selection))])
-# allsig = np.array([all(sig_list[:,m] < p_thres) for m in range(len(mod_list))])
-# col_modsig[allsig==False] = None
-
-# Based on data being significant when not correcting for confounding factors
-fig = plt.figure(figsize=(17,11))
-
-# Scatter plots
-for m in range(len(mod_list)):
-    for i in range(len(index_selection)):
-        # Split data in significant and non-significant
-        col_modsig = np.array(col_modlist.copy())
-        # Link focussed incl parent
-        # col_modsig[parcorr_theory[:,i,1,1,2,0] > p_thres] = None
-        # col_modsig[parcorr_theory_gpdc[:,i,1,1,2,0] > p_thres] = None
-        # Includsing all variables
-        # col_modsig[parcorr[:,1,i,(i+1)%len(index_selection),0] > p_thres] = None
-        
-        if i == 0:
-            plt.scatter(np.arange(i-0.3,i+0.299,0.6/len(mod_list))[m], 
-                        estimated_causal_effects[m,i], marker=mark_modlist[m],
-                        edgecolors=col_modlist[m], facecolors=col_modsig[m],
-                        label=mod_list[m], s=120)
-        else:
-            plt.scatter(np.arange(i-0.3,i+0.299,0.6/len(mod_list))[m], 
-                        estimated_causal_effects[m,i], marker=mark_modlist[m],
-                        edgecolors=col_modlist[m], facecolors=col_modsig[m],
-                        s=120)
-
-plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-plt.xticks(np.arange(len(index_selection)), link_names, fontsize=16)
-plt.yticks(fontsize=14)
-plt.xlim([-0.5, len(index_selection)-0.5])
-plt.ylabel("Causal Effect", fontsize=16)
-plt.grid()
-plt.legend(fontsize=14, ncols=4, loc='upper right', bbox_to_anchor=(0.995, 1.34))
-plt.tight_layout()
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha"+repr(alpha_lev)+"_alltheory.pdf")
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha"+repr(alpha_lev)+"_inclparent.pdf")
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha.pdf")
-plt.show()
-
-#%% Violin plot of causal effect
-
-link_names = ["SPG to SSS", "SSS to MLD", "MLD to SubT", 
-              "SubT to Rho", "Rho to SPG"]
-col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
-
-# Based on data being significant when not correcting for confounding factors
-fig = plt.figure(figsize=(12,8))
-
-for i in range(len(index_selection)):
-    # Violin plot
-    vio = plt.violinplot(estimated_causal_effects[:,i], positions = [i])
-    # Scatter plots
-    scat = plt.scatter((i)*np.ones(len(mod_list)), estimated_causal_effects[:,i], c='k')
-    
-    # Color of violin plots
-    for pc in vio['bodies']:
-        pc.set_color(col_list[i])
-    for partname in ('cbars','cmins','cmaxes'):
-        vio[partname].set_edgecolor(col_list[i])
-
-plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-plt.xticks(np.arange(len(index_selection)), link_names, fontsize=14)
-plt.yticks(fontsize=14)
-plt.xlim([-0.5, len(index_selection)-0.5])
-plt.grid()
-# plt.savefig(dir_save_fig + "Causaleffect_baseline.pdf")
-plt.show()
 
 #%% LOAD DATA
 """
-Load the data as saved for different approaches.
+Load the data as saved for different approaches (checked all).
 
 """
 
@@ -956,14 +628,17 @@ Load the data as saved for different approaches.
 alpha_lev = 0.05
 
 # List of options and methods
-data_sel = ["allvariables", "allpairs", "theory"]
-meth_list = ['pcmci', 'pcmci+']
+data_sel    = ["allvariables", "allpairs", "theory"]
+meth_list   = ['pcmci', 'pcmci+']
 metric_list = ['pc','rpc']
 
 # Initialise lists with all the data
-corr_all_list = [[[[] for k in range(2)] for j in range(2)] for i in range(3)]
-parcorr_all_list = [[[[] for k in range(2)] for j in range(2)] for i in range(3)]
-graph_list_all_list = [[[[] for k in range(2)] for j in range(2)] for i in range(3)]
+corr_all_list       = [[[[] for k in range(2)] for j in range(2)] 
+                       for i in range(3)]
+parcorr_all_list    = [[[[] for k in range(2)] for j in range(2)] 
+                       for i in range(3)]
+graph_list_all_list = [[[[] for k in range(2)] for j in range(2)] 
+                       for i in range(3)]
 
 
 # For all different sets of variables considerd in pcmci, load the data
@@ -973,12 +648,16 @@ for i in range(3):
         pcmci_meth = meth_list[j]
         for k in range(2):
             metric = metric_list[k]
-            res_causal = np.load(dir_save_data+"causaldiscovery_"+data_sel[i]+"_"
-                                  +pcmci_meth+"_"+metric+"_alpha"+repr(alpha_lev)
-                                  +"_lag"+repr(max_lag)+".npz")
-            # res_causal = np.load(dir_save_data+"causaldiscovery_norho_"+data_sel[i]+"_"
-            #                       +pcmci_meth+"_"+metric+"_alpha"+repr(alpha_lev)
-            #                       +"_lag"+repr(max_lag)+".npz")
+            if varincl == "std": #all
+                res_causal = np.load(dir_save_data+"causaldiscovery_"+
+                                     data_sel[i]+"_"+pcmci_meth+"_"+metric+
+                                     "_alpha"+repr(alpha_lev)+"_lag"+
+                                     repr(max_lag)+".npz")
+            elif varincl == "norho": #norho
+                res_causal = np.load(dir_save_data+"causaldiscovery_norho_"+
+                                     data_sel[i]+"_"+pcmci_meth+"_"+metric+
+                                     "_alpha"+repr(alpha_lev)+"_lag"+
+                                     repr(max_lag)+".npz")
             corr_all_list[i][j][k] = res_causal['corr']
             parcorr_all_list[i][j][k] = res_causal['parcorr']
             graph_list_all_list[i][j][k] = res_causal['graph']
@@ -1024,143 +703,569 @@ for i in range(3):
     links_c[i] = np.sum(where_contemp[i], axis=2)
     links_u[i] = np.sum(where_unclear[i], axis=2)
 
-#%% PLOT NUMBER OF LINKS FOR EACH METHOD
 
+#%% PLOT: NUMBER OF MODELS WITH A LINK
+"""
+Plot the number of models for each of the links up to lag-10, for both the
+link to a variable itself as well as the theoretical link.
+
+"""
+
+# Color list and whether to save
 clist = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
          'tab:brown', 'tab:pink']
+saveplot = False
 
-for i0 in range(3):
-    fig, ax = plt.subplots(len(index_selection),len(index_selection), 
-                           figsize=(10,10))
-    for j in range(len(index_selection)):
-        for k in range(len(index_selection)):
-            # Set lines
-            ax[j,k].hlines(5,-1,max_lag+1, color='k', linestyle='-')
-            ax[j,k].hlines(10,-1,max_lag+1, color='k', linestyle=':')
-            
-            c_count = 0
-            for i1 in range(2):
-                for i2 in range(2):
-                    if i0 == 0:
-                        # Links including all 5 variables
-                        ax[j,k].plot(np.arange(0,max_lag+1), 
-                                     links_r[i0][i1,i2,j,k],'o', 
-                                     c=clist[c_count])
-                        ax[j,k].plot(np.arange(0,max_lag+1), 
-                                     links_l[i0][i1,i2,j,k],'v', 
-                                     c=clist[c_count])
-                        ax[j,k].plot(np.arange(0,max_lag+1), 
-                                     links_c[i0][i1,i2,j,k],'X', 
-                                     c=clist[c_count])
-                        ax[j,k].plot(np.arange(0,max_lag+1), 
-                                     links_u[i0][i1,i2,j,k],'P', 
-                                     c=clist[c_count])
-                    if i0 == 1:
-                        # Links focussing on pairwise links
-                        if j == k:
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_r[i0][i1,i2,j,k,0,0],'o', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_l[i0][i1,i2,j,k,0,0],'v', 
-                                         c=clist[c_count])
-                        elif j < k:
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_r[i0][i1,i2,j,k,0,1],'o', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_l[i0][i1,i2,j,k,0,1],'v', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_c[i0][i1,i2,j,k,0,1],'X', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_u[i0][i1,i2,j,k,0,1],'P', 
-                                         c=clist[c_count])
-                        elif j >  k:
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_r[i0][i1,i2,j,k,1,0],'o', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_l[i0][i1,i2,j,k,1,0],'v', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_c[i0][i1,i2,j,k,1,0],'X', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_u[i0][i1,i2,j,k,1,0],'P', 
-                                         c=clist[c_count])
-                    if i0 == 2:
-                        # Links for theoretical links
-                        if j == k:
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_r[i0][i1,i2,j,1,1],'o', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_l[i0][i1,i2,j,1,1],'v', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_c[i0][i1,i2,j,1,1],'X', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_u[i0][i1,i2,j,1,1],'P', 
-                                         c=clist[c_count])
-                        if k == (j+1)%len(index_selection):
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_r[i0][i1,i2,j,1,2],'o', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_l[i0][i1,i2,j,1,2],'v', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_c[i0][i1,i2,j,1,2],'X', 
-                                         c=clist[c_count])
-                            ax[j,k].plot(np.arange(0,max_lag+1), 
-                                         links_u[i0][i1,i2,j,1,2],'P', 
-                                         c=clist[c_count])
-                    # print(meth_list[i1])
-                    # print(metric_list[i2])
-                    c_count += 1
-        # Links focussing on pairwise links
-        # if j == i:
-        #     for k in range(len(index_selection)):
-        #         ax[i,j].plot(np.arange(0,max_lag+1), links_2p[i,k,0,0],'X', c=clist[k+2], markerfacecolor='none')
-        # elif i < j:
-        #     ax[i,j].plot(np.arange(0,max_lag+1), links_2p[i,j,0,1],'X', c='tab:green')
-        # elif i > j:
-        #     ax[i,j].plot(np.arange(0,max_lag+1), links_2p[i,j,1,0],'X', c='tab:green')
-        # Links focussing on theoretical links
-        # if j == i:
-        #     ax[i,j].plot(np.arange(0,max_lag+1), links_theory[i,0,0],'v', c='tab:orange')
-        # if j == (i+1)%len(index_selection):
-        #     ax[i,j].plot(np.arange(0,max_lag+1), links_theory[i,0,1],'v', c='tab:orange')
-        # Links focussing on theoretical links using gpdc
-        # if j == i:
-        #     ax[i,j].plot(np.arange(0,max_lag+1), links_theory_gpdc[i,0,0],'^', c='tab:purple')
-        # if j == (i+1)%len(index_selection):
-        #     ax[i,j].plot(np.arange(0,max_lag+1), links_theory_gpdc[i,0,1],'^', c='tab:purple')
-        # Plot settings
-            ax[j,k].set_xlim([-1,max_lag+1])
-            ax[j,k].set_ylim([0,len(mod_list)+1])
-            ax[j,k].grid()
-            if j == len(index_selection)-1:
-                ax[j,k].set_xlabel("Lag (years)", fontsize=8)
-            if j == 0:
-                ax[j,k].set_title(index_selection[k], fontsize=10)
-            if k == 0:
-                ax[j,k].set_ylabel(index_selection[j], fontsize=10)
+# Plot labels and color
+if varincl == "std": #all
+    col_list = clist
+    var_list = ["SPG", "SSS", "MLD", "SubT", "Rho"]
+elif varincl == "norho": #norho
+    var_list = ["SPG", "SSS", "MLD", "SubT"]
+    col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
+
+# Select method: PCMCI+, RobustParCorr
+i1 = 1
+i2 = 1
+
+fig, ax = plt.subplots(2,len(index_selection), figsize=(20,9))
+for j in range(len(index_selection)):
+    for k in range(2):
+        # Set lines
+        ax[k,j].hlines(5,-1,max_lag+1, color='k', linestyle='-')
+        ax[k,j].hlines(10,-1,max_lag+1, color='k', linestyle=':')
+   
+    # Links for theoretical links
+    ax[0,(j+1)%len(index_selection)].plot(np.arange(0.,max_lag+0.5), 
+                                          links_r[2][i1,i2,j,2,2],'o', 
+                                          c=clist[0], ms=10)
+
+    ax[1,j].plot(np.arange(0.,max_lag+0.5), links_r[2][i1,i2,j,1,2],'o', 
+                 c=clist[0], ms=10)
+    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], links_l[2][i1,i2,j,1,2,0],'v', 
+                  c=clist[1], ms=10)
+    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], links_c[2][i1,i2,j,1,2,0],'X', 
+                  c=clist[2], ms=10)
+    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], links_u[2][i1,i2,j,1,2,0],'P', 
+                  c=clist[3], ms=10)
+    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], 
+                 links_r[2][i1,i2,j,1,2,0] + links_c[2][i1,i2,j,1,2,0] \
+                     + links_u[2][i1,i2,j,1,2,0],'s', c=clist[4], ms=10)
+        
+    # Plot settings
+    for k in range(2):
+        ax[k,j].set_xlim([-1,max_lag+1])
+        ax[k,j].set_ylim([0,len(mod_list)+1])
+        ax[k,j].tick_params(labelsize=22)
+        ax[k,0].set_ylabel("Number of Models", fontsize=24)
+        ax[k,j].grid(True)
     
-    plt.tight_layout()
-    # plt.savefig(dir_save_fig + "NrModelsWithLink_alpha"+repr(alpha_lev)+
-    #             "_comparemethods_"+data_sel[i0]+".pdf")
-    plt.show()
+    ax[1,j].set_xlabel("Lag (years)", fontsize=24)
+    ax[0,j].set_title(var_list[j]+r"$\rightarrow$"+var_list[j], fontsize=24)
+    ax[1,j].set_title(var_list[j]+r"$\rightarrow$"+var_list[(j+1)%len(var_list)], 
+                      fontsize=24)
+    
+    # Change color of axes
+    plt.setp(ax[1,j].spines.values(), color=col_list[j], linewidth=4)
+    plt.setp([ax[1,j].get_xticklines(), ax[0,j].get_yticklines()], color=col_list[j])
+    
+plt.tight_layout()
+if saveplot:
+    if varincl == "std": #all
+        plt.savefig(dir_save_fig + "NrModelsWithLink_alpha"+repr(alpha_lev)+"_"
+                    +meth_list[i1]+"_"+metric_list[i2]+"_paper.pdf")
+    elif varincl == "norho": #norho
+        plt.savefig(dir_save_fig + "NrModelsWithLink_norho_alpha"
+                    +repr(alpha_lev)+"_"+meth_list[i1]+"_"+metric_list[i2]
+                    +"_paper.pdf")
+plt.show()
 
-#%% COMPARE USED DATA
-clist = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
-         'tab:brown', 'tab:pink']
-var_list = ["SPG", "SSS", "MLD", "SubT", "Rho"]
+#%% CHECK WHICH MODELS AND COUNT
 
-# PCMCI+, RobustParCorr
+# Set which link to get the models for (in order)
+lnk = 0
+
+for lag in [0,1]:
+    print("Lag: "+repr(lag))
+    print(len(np.array(mod_list)[where_right[2][i1,i2,:,lnk,1,2,lag]==1]))
+    print(np.array(mod_list)[where_right[2][i1,i2,:,lnk,1,2,lag]==1])
+    print(len(np.array(mod_list)[where_contemp[2][i1,i2,:,lnk,1,2,lag]==1]))
+    print(np.array(mod_list)[where_contemp[2][i1,i2,:,lnk,1,2,lag]==1])
+    print(len(np.array(mod_list)[where_unclear[2][i1,i2,:,lnk,1,2,lag]==1]))
+    print(np.array(mod_list)[where_unclear[2][i1,i2,:,lnk,1,2,lag]==1])
+    # print(len(np.array(mod_list)[where_left[2][i1,i2,:,lnk,1,2,lag]==1]))
+    # print(np.array(mod_list)[where_left[2][i1,i2,:,lnk,1,2,lag]==1])
+
+# Get the models with a significant link
+where_check = [sum(x) for x in zip(where_right, where_contemp, 
+                                   where_unclear)]
+# Get the models with a significant link
+where_uc = [sum(x) for x in zip(where_contemp, where_unclear)]
+
+where_link = where_check[2][i1,i2,:,:,1,2,0] + where_check[2][i1,i2,:,:,1,2,1] + where_check[2][i1,i2,:,:,1,2,2]
+where_link[where_link == 2] = 1
+where_link[where_link == 3] = 1
+
+print(np.sum(where_check[2][i1,i2,:,:,1,2,0], axis=1))
+print(np.sum(where_check[2][i1,i2,:,:,1,2,1], axis=1))
+print(np.sum(where_check[2][i1,i2,:,:,1,2,0:2], axis=(1,2)))
+print(np.sum(where_uc[2][i1,i2,:,:,1,2,0], axis=1))
+print(np.sum(where_link, axis=1))
+
+print(np.sum(where_check[2][i1,i2,:,:,1,2,0], axis=0))
+print(np.sum(where_check[2][i1,i2,:,:,1,2,1], axis=0))
+print(np.sum(where_check[2][i1,i2,:,:,1,2,2], axis=0))
+print(np.sum(where_check[2][i1,i2,:,:,1,2,0:3], axis=(0,2)))
+print(np.sum(where_right[2][i1,i2,:,:,1,2,0], axis=0))
+print(np.sum(where_uc[2][i1,i2,:,:,1,2,0], axis=0))
+print(np.sum(where_link, axis=0))
+
+
+#%% COMPUTE CAUSAL EFFECT
+"""
+Computation of the causal effect of each link, following the preset network 
+determined by the links which are present in over 5 models. Both including and
+excluding rho. The network, a list of predictors and their intervention values
+are set a priori. Then the causal effect is computed for each model.
+
+"""
+
+# estimated_causal_effects_list = np.zeros((len(mod_list),len(index_selection),2))
+estimated_causal_effects_list = np.zeros((len(mod_list),len(index_selection),7))
+
+# Preset network, links between three variables following theory: 0.05, lag 5
+if varincl == "std": #all
+    # Links between three variables following theory: 0.05, lag 5
+    theory_graph_list = [np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
+                                  [['<--','','','','',''],['','-->','-->','-->','-->','-->'],['','-->','','','','']],
+                                  [['','','','','',''],['','','','','',''],['','-->','','','','']]]),
+                          np.array([[['','-->','-->','-->','-->','-->'],['','-->','','','',''],['','','','','','']],
+                                    [['','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
+                                    [['','','','','',''],['<--','','','','',''],['','-->','','','','']]]),
+                          np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
+                                    [['<--','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
+                                    [['','','','','',''],['<--','','','','',''],['','-->','-->','','','']]]),
+                          np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
+                                    [['<--','','','','',''],['','-->','-->','','',''],['-->','-->','','','','']],
+                                    [['','','','','',''],['<--','','','','',''],['','-->','','','','']]]),
+                          np.array([[['','-->','-->','','',''],['-->','-->','','','',''],['','','','','','']],
+                                    [['<--','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
+                                    [['','','','','',''],['<--','','','','',''],['','-->','-->','-->','-->','-->']]])]
+    X_list = [[(1,-1), (2,-1)],
+              [(1,0),(1,-1), (2,-1)],
+              [(1,0),(1,-1), (2,-1),(2,-2)],
+              [(1,0),(1,-1), (2,-1)],
+              [(1,0),(1,-1), (2,-1),(2,-2),(2,-3),(2,-4),(2,-5)]]
+    intervention_list = [[np.array([[1,0]]), np.array([[0,1]])],
+                          [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
+                          [np.array([[1,0,0,0]]), np.array([[0,1,0,0]]), 
+                            np.array([[0,0,1,0]]), np.array([[0,0,0,1]])],
+                          [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
+                          [np.array([[1,0,0,0,0,0,0]]), np.array([[0,1,0,0,0,0,0]]), 
+                            np.array([[0,0,1,0,0,0,0]]), np.array([[0,0,0,1,0,0,0]]),
+                            np.array([[0,0,0,0,1,0,0]]), np.array([[0,0,0,0,0,1,0]]), 
+                            np.array([[0,0,0,0,0,0,1]])]]
+    
+elif varincl == "norho": #norho
+    theory_graph_list = [np.array([[['','-->','-->','','',''],['','-->','-->','','',''],['','','','','','']],
+                                    [['','','','','',''],['','-->','-->','-->','-->','-->'],['','-->','','','','']],
+                                    [['','','','','',''],['','','','','',''],['','-->','-->','','','']]]),
+                            np.array([[['','-->','-->','-->','-->','-->'],['','-->','','','',''],['','','','','','']],
+                                      [['','','','','',''],['','-->','-->','','',''],['-->','-->','','','','']],
+                                      [['','','','','',''],['<--','','','','',''],['','-->','','','','']]]),
+                            np.array([[['','-->','-->','','',''],['-->','-->','','','',''],['','','','','','']],
+                                      [['<--','','','','',''],['','-->','','','',''],['-->','-->','','','','']],
+                                      [['','','','','',''],['<--','','','','',''],['','-->','-->','','','']]]),
+                            np.array([[['','-->','','','',''],['-->','-->','','','',''],['','','','','','']],
+                                      [['<--','','','','',''],['','-->','-->','','',''],['','-->','-->','','','']],
+                                      [['','','','','',''],['','','','','',''],['','-->','-->','-->','-->','-->']]])]
+    X_list = [[(1,-1), (2,-1),(2,-2)],
+              [(1,0),(1,-1), (2,-1)],
+              [(1,0),(1,-1), (2,-1),(2,-2)],
+              [(1,-1),(1,-2), (2,-1),(2,-2),(2,-3),(2,-4),(2,-5)]]
+    intervention_list = [[np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
+                          [np.array([[1,0,0]]), np.array([[0,1,0]]), np.array([[0,0,1]])],
+                          [np.array([[1,0,0,0]]), np.array([[0,1,0,0]]), 
+                          np.array([[0,0,1,0]]), np.array([[0,0,0,1]])],
+                          [np.array([[1,0,0,0,0,0,0]]), np.array([[0,1,0,0,0,0,0]]), 
+                          np.array([[0,0,1,0,0,0,0]]), np.array([[0,0,0,1,0,0,0]]),
+                          np.array([[0,0,0,0,1,0,0]]), np.array([[0,0,0,0,0,1,0]]), 
+                          np.array([[0,0,0,0,0,0,1]])]]
+
+# For each model
+for m in range(len(mod_list)):
+    for i in range(len(index_selection)):
+        # Set causal effect stuff
+        causal_effect_lag = CausalEffects(theory_graph_list[i], 
+                                          graph_type='stationary_dag', 
+                                          X=X_list[i], Y=[(2,0)], S=None, 
+                                          hidden_variables=None, verbosity=1)
+        
+        # Fit causal effect model from observational data
+        causal_effect_lag.fit_total_effect(
+                dataframe=dataframe_theory[m][i], 
+                estimator=LinearRegression(),
+                adjustment_set='optimal',
+                conditional_estimator=None,  
+                data_transform=None,
+                mask_type=None,
+                )
+        
+        # Predict effect of interventions
+        intervention_data = intervention_list[i]
+        
+        for j in range(len(intervention_data)):
+            estimated_causal_effects_list[m,i,j] = \
+                causal_effect_lag.predict_total_effect( 
+                    intervention_data=intervention_data[j])
+
+#%% PLOT: CAUSAL EFFECT VIOLIN
+"""
+Plot the distribution of the causal effect values for the theoretical links 
+for models in which the link is (not) significant.
+
+"""
+
+# Set transparency and whether to save
+alpha = 0.4
+saveplot = False
+
+# Plot labels, color and lags
+if varincl == "std": #all
+    link_names = ["                Lag-1 \nSPG to SSS", 
+                  "Lag-0       Lag-1 \nSSS to MLD", 
+                  "Lag-0       Lag-1 \nMLD to SubT", 
+                  "Lag-0       Lag-1 \nSubT to Rho", 
+                  "Lag-0       Lag-1 \nRho to SPG"]
+    col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
+    lag_list = [[1], [0,1], [0,1], [0,1], [0,1]]
+elif varincl == "norho": #norho
+    link_names = ["                Lag-1 \nSPG to SSS", 
+                  "Lag-0       Lag-1 \nSSS to MLD", 
+                  "Lag-0       Lag-1 \nMLD to SubT", 
+                  "Lag-1       Lag-2 \nSubT to SPG"]
+    col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
+    lag_list = [[1], [0,1], [0,1], [1,2]]
+
+# Select method: PCMCI+, RobustParCorr
+i1 = 1
+i2 = 1
+
+fig = plt.figure(figsize=(15,8))
+
+for i in range(len(index_selection)):
+    
+    # Get the models with a significant link
+    where_check = [sum(x) for x in zip(where_right, where_contemp, 
+                                        where_unclear)]
+    # where_check = where_right
+    
+    # For each of the lags
+    for lag_ind in range(len(lag_list[i])):
+        # Get causal effect and lag
+        lg = lag_list[i][lag_ind]
+        est_ce = estimated_causal_effects_list[:,:,lag_ind]
+        
+        # Theory
+        data_sig = est_ce[where_check[2][i1,i2,:,i,1,2,lg] == 1,i]
+        data_nonsig = est_ce[where_check[2][i1,i2,:,i,1,2,lg] == 0,i]
+        
+        print(np.array(mod_list)[where_check[2][i1,i2,:,i,1,2,lg] == 1])
+        
+        if lag_list[i][-1] == 2:
+            lg = lg - 1
+            
+        # Violin plots
+        vio_sig = plt.violinplot(data_sig, positions = [2*i+lg-0.2])
+        vio_nonsig = plt.violinplot(data_nonsig, positions = [2*i+lg+0.2])
+        # vio_all = plt.violinplot(est_ce[:,i], positions = [2*i+lg-0.2])
+        
+        # Color of violin plots
+        for pc in vio_sig['bodies']:
+            pc.set_color(col_list[i])
+            pc.set_linewidth(2)
+            pc.set_alpha(0.4)
+            if lg == 1:
+                pc.set_hatch('xx')
+        for pc in vio_nonsig['bodies']:
+            pc.set_color('tab:gray')
+            pc.set_linewidth(2)
+            pc.set_alpha(0.4)
+            if lg == 1:
+                htch = pc.set_hatch('xx')
+                
+        for partname in ('cbars','cmins','cmaxes'):
+            vio_sig[partname].set_edgecolor(col_list[i])
+            vio_sig[partname].set_linewidth(2)
+            vio_nonsig[partname].set_edgecolor('tab:gray')
+            vio_nonsig[partname].set_linewidth(2)
+            
+        # Scatter plots
+        scat_sig = plt.scatter((2*i+lg-0.2)*np.ones(len(data_sig)), 
+                               data_sig, c='k')
+        scat_nonsig = plt.scatter((2*i+lg+0.2)*np.ones(len(data_nonsig)), 
+                                  data_nonsig, c='tab:gray')
+        
+        plt.text(-0.3+2*i+lg,1.25, repr(len(data_sig))+"   " \
+                 +repr(len(data_nonsig)), fontsize = 18)
+            
+plt.plot(np.arange(-1,12), np.zeros((13)), c='k')
+plt.xlim([0, 2*len(index_selection)-0.5])
+# plt.xlim([-0.5, 2*len(index_selection)-0.5])
+plt.ylim([-1.,1.2])
+plt.xticks(np.arange(0.5,2*len(index_selection),2), link_names, fontsize=20)
+plt.yticks(fontsize=18)
+plt.ylabel("Causal Effect", fontsize=20)
+plt.grid()
+plt.tight_layout()
+if saveplot:
+    if varincl == "std": #all
+        plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_"
+                    +meth_list[i1]+"_"+metric_list[i2]+"_paper_new.png", dpi=300)
+    elif varincl == "norho": #norho
+        plt.savefig(dir_save_fig + "Causaleffect_norho_alpha"+repr(alpha_lev)+
+                    "_"+meth_list[i1]+"_"+metric_list[i2]+"_new.png", dpi=300)
+plt.show()
+
+#%% PLOT: CAUSAL EFFECT FROM VARIABLES TO THEMSELVES VIOLIN
+"""
+Plot the distribution of the causal effect values for the links of variables to
+themselves for models in which the link is (not) significant.
+
+"""
+
+# Plot labels, color, lags and position
+if varincl == "std": #all
+    col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
+    link_names = ["Lag-1 \nSSS", 
+                  "Lag-1 \nMLD", 
+                  "Lag-1       Lag-2 \nSubT", 
+                  "Lag-1 \nRho",
+                  "Lag-1       Lag-2       Lag-3       Lag-4       Lag-5 \nSPG"]
+    lag_list = [[1], [1], [1,2], [1], [1,2,3,4,5]]
+    posit_list = [[0], [1], [2,3], [4], [5,6,7,8,9]]
+elif varincl == "norho": #norho
+    col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
+    link_names = ["Lag-1 \nSSS", 
+                  "Lag-1 \nMLD", 
+                  "Lag-1       Lag-2 \nSubT",
+                  "Lag-1       Lag-2       Lag-3       Lag-4       Lag-5 \nSPG"]
+    lag_list = [[1,2], [1], [1,2], [1,2,3,4,5]]
+    posit_list = [[0,1], [2], [3,4], [5,6,7,8,9]]
+
+# Set transparency and whether to save
+alpha = 0.4
+saveplot = False
+
+# Select method: PCMCI+, RobustParCorr
+i1 = 1
+i2 = 1
+
+fig = plt.figure(figsize=(15,8))
+# Get the models with a significant link
+where_check = [sum(x) for x in zip(where_right, where_contemp, 
+                                    where_unclear)]
+
+# For each of the lags
+for i in range(len(index_selection)):
+    for lag_ind in range(len(lag_list[i])):
+        # Get causal effect and lag
+        lg = lag_list[i][lag_ind]
+        est_ce = estimated_causal_effects_list[:,:,lag_ind]
+        
+        data_sig = est_ce[where_check[2][i1,i2,:,i,2,2,lg] == 1,i]
+        vio_sig = plt.violinplot(data_sig, positions = [posit_list[i][lag_ind]-0.2])
+        scat_sig = plt.scatter((posit_list[i][lag_ind]-0.2)*np.ones(len(data_sig)), 
+                               data_sig, c='k')
+        if not (i == 2 and lag_ind == 0):
+            data_nonsig = est_ce[where_check[2][i1,i2,:,i,2,2,lg] == 0,i]
+            vio_nonsig = plt.violinplot(data_nonsig, positions = [posit_list[i][lag_ind]+0.2])
+            scat_nonsig = plt.scatter((posit_list[i][lag_ind]+0.2)*np.ones(len(data_nonsig)), 
+                                      data_nonsig, c='tab:gray')
+        else:
+            data_nonsig = []
+        
+        print(np.array(mod_list)[where_check[2][i1,i2,:,i,2,2,lg] == 1])
+
+        # Color of violin plots
+        for pc in vio_sig['bodies']:
+            pc.set_color(col_list[i])
+            pc.set_linewidth(2)
+            pc.set_alpha(0.4)
+            if lg == 2:
+                pc.set_hatch('xx')
+            if lg == 3:
+                pc.set_hatch('//')
+            if lg == 4:
+                pc.set_hatch('--')
+            if lg == 5:
+                pc.set_hatch('++')
+        for pc in vio_nonsig['bodies']:
+            pc.set_color('tab:gray')
+            pc.set_linewidth(2)
+            pc.set_alpha(0.4)
+            if lg == 2:
+                pc.set_hatch('xx')
+            if lg == 3:
+                pc.set_hatch('//')
+            if lg == 4:
+                pc.set_hatch('--')
+            if lg == 5:
+                pc.set_hatch('++')
+                
+        for partname in ('cbars','cmins','cmaxes'):
+            vio_sig[partname].set_edgecolor(col_list[i])
+            vio_sig[partname].set_linewidth(2)
+            vio_nonsig[partname].set_edgecolor('tab:gray')
+            vio_nonsig[partname].set_linewidth(2)
+        
+        plt.text(-0.3+posit_list[i][lag_ind],1.25, repr(len(data_sig))+"   " \
+                 +repr(len(data_nonsig)), fontsize = 18)
+            
+plt.plot(np.arange(-1,14), np.zeros((15)), c='k')
+plt.ylim([-1.,1.2])
+plt.xlim([-0.5, 9.5])
+if varincl == "std": #all
+    plt.xticks(np.array([0,1,2.5,4,7]), link_names, fontsize=20)
+elif varincl == "norho": #norho
+    plt.xticks(np.array([0.5,2,3.5,7]), link_names, fontsize=20)
+plt.yticks(fontsize=18)
+plt.ylabel("Causal Effect", fontsize=20)
+plt.grid()
+plt.tight_layout()
+
+if saveplot:
+    if varincl == "std": #all
+        plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_"
+                    +meth_list[i1]+"_"+metric_list[i2]+"_auto-effect.png", 
+                    dpi=300)
+    elif varincl == "norho": #norho
+        plt.savefig(dir_save_fig + "Causaleffect_norho_alpha"+repr(alpha_lev)+
+                    "_"+meth_list[i1]+"_"+metric_list[i2]+"_auto-effect.png", 
+                    dpi=300)
+plt.show()
+
+#%% PLOT: CAUSAL EFFECT MODEL VALUES
+"""
+"""
+
+if varincl == "std": #all
+    link_names = ["                Lag-1 \nSPG to SSS", 
+                  "Lag-0       Lag-1 \nSSS to MLD", 
+                  "Lag-0       Lag-1 \nMLD to SubT", 
+                  "Lag-0       Lag-1 \nSubT to Rho",
+                  "Lag-0       Lag-1 \nRho to SPG"]
+    col_modlist = ['tab:blue','tab:orange','tab:orange','tab:green','tab:green',
+                    'tab:green','tab:green','tab:red','tab:red','tab:purple',
+                    'tab:purple','tab:brown','tab:brown','tab:brown','tab:brown',
+                    'tab:brown','tab:pink','tab:pink','tab:gray','tab:gray',
+                    'tab:olive','tab:olive','gold','chocolate','tab:cyan','tab:cyan',
+                    'tab:cyan','black','lightgreen','lightgreen','navy','navy']
+    mark_modlist = ['o','o','X','o','X','v','P','o','X','o','X','o','X','v','P',
+                    'd','o','X','o','X','o','X','o','o','o','X','v','o','o','X',
+                    'o','X']
+    lag_list = [[1], [0,1], [0,1], [0,1], [0,1]]
+
+elif varincl == "norho": #norho
+    link_names = ["                Lag-1 \nSPG to SSS", 
+                  "Lag-0       Lag-1 \nSSS to MLD", 
+                  "Lag-0       Lag-1 \nMLD to SubT", 
+                  "Lag-1       Lag-2 \nSubT to SPG"]
+    col_modlist = ['tab:blue','tab:orange','tab:orange','tab:green','tab:green',
+                    'tab:green','tab:green','tab:red','tab:red','tab:purple',
+                    'tab:purple','tab:brown','tab:brown','tab:brown','tab:brown',
+                    'tab:brown','tab:brown','tab:pink','tab:pink','tab:gray','tab:gray',
+                    'tab:olive','tab:olive','gold','chocolate','tab:cyan','tab:cyan',
+                    'tab:cyan','black','lightgreen','lightgreen','navy','navy']
+    mark_modlist = ['o','o','X','o','X','v','P','o','X','o','X','o','X','v','P',
+                    'd','*','o','X','o','X','o','X','o','o','o','X','v','o','o','X',
+                    'o','X']
+    lag_list = [[1], [0,1], [0,1], [1,2]]
+
+# Save or not
+saveplot = False
+
+# Select method: PCMCI+, RobustParCorr
+i1 = 1
+i2 = 1
+
+col_modsig = np.array(col_modlist.copy())
+
+# Get color when significant
+sig_list = np.array([where_check[2][i1,i2,:,i,1,2,:] 
+                      for i in range(len(index_selection))])
+
+# Based on data being significant when not correcting for confounding factors
+fig = plt.figure(figsize=(17,11))
+
+# Scatter plots
+for m in range(len(mod_list)):
+    for i in range(len(index_selection)):
+        
+        # For each of the lags
+        for lag_ind in range(len(lag_list[i])):
+            # Get causal effect and lag
+            est_ce = estimated_causal_effects_list[:,:,lag_ind]
+            lg = lag_list[i][lag_ind]
+            
+            if lag_list[i][-1] == 2:
+                lg = lg - 1
+            
+            if lg == 0:
+                col_face = np.array(col_modlist.copy())
+            elif lg == 1:
+                col_face = len(mod_list) * ['white']
+            
+            if i == 1 and lg == 0:
+                plt.scatter(np.arange(2*i+lg-0.3,2*i+lg+0.299,0.6/len(mod_list))[m], 
+                            est_ce[m,i], marker=mark_modlist[m],
+                            edgecolors=col_modlist[m], facecolors=col_face[m],
+                            label=mod_list[m], s=120)
+            else:
+                plt.scatter(np.arange(2*i+lg-0.3,2*i+lg+0.299,0.6/len(mod_list))[m], 
+                            est_ce[m,i], marker=mark_modlist[m],
+                            edgecolors=col_modlist[m], facecolors=col_face[m],
+                            s=120)
+
+plt.plot(np.arange(-1,12), np.zeros((13)), c='k')
+
+plt.xlim([0, 2*len(index_selection)-0.5])
+plt.ylim([-1.,1.2])
+plt.ylabel("Causal Effect", fontsize=20)
+plt.xticks(np.arange(0.5,2*len(index_selection),2), link_names, fontsize=20)
+plt.yticks(fontsize=18)
+plt.grid()
+plt.legend(fontsize=14, ncols=4, loc='upper right', bbox_to_anchor=(0.995, 1.34))
+plt.tight_layout()
+
+if saveplot:
+    if varincl == "std": #all
+        plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha"+
+                    repr(alpha_lev)+"_"+meth_list[i1]+"_"+metric_list[i2]+
+                    "_paper.png", dpi=300)
+    elif varincl == "norho": #norho
+        plt.savefig(dir_save_fig + "Causaleffect_norho_modelscatter_alpha"+
+                    repr(alpha_lev)+"_"+meth_list[i1]+"_"+metric_list[i2]+
+                    "_paper.png", dpi=300)
+plt.show()
+
+
+#%% PLOT SI: COMPARE NUMBER OF MODELS WITH LINK FOR TWO DATASETS
+"""
+Plot the number of models for which a link is significant when focussing on 
+one link, or including all five variables.
+
+"""
+clist = ['tab:blue', 'tab:orange']
+if varincl == "std": #all
+    var_list = ["SPG", "SSS", "MLD", "SubT", "Rho"]
+elif varincl == "norho": #norho
+    var_list = ["SPG", "SSS", "MLD", "SubT"]
+
+# Save or not
+saveplot = False
+
+# Select method: PCMCI+, RobustParCorr
 i1 = 1
 i2 = 1
 
@@ -1234,27 +1339,13 @@ for i0 in [2,0]:
             #         ax[j,k].plot(np.arange(0,max_lag+1), 
             #                       links_r[i0][i1,i2,j,k,1,0] + links_u[i0][i1,i2,j,k,1,0] + links_c[i0][i1,i2,j,k,1,0],'s', 
             #                       c=clist[i0], alpha=0.5)
+            
             if i0 == 2:
                 # Links for theoretical links
                 if j == k:
                     ax[(j+1)%len(index_selection),(j+1)%len(index_selection)].\
                         plot(np.arange(0.,max_lag+0.5), links_r[i0][i1,i2,j,2,2],
                              'o', c=clist[0])
-                    # ax[j,k].plot(np.arange(0,max_lag+1), 
-                    #              links_r[i0][i1,i2,j,1,1],'o', 
-                    #              c=clist[0])
-                    # ax[j,k].plot(np.arange(0,max_lag+1), 
-                    #              links_l[i0][i1,i2,j,1,1],'v', 
-                    #              c=clist[0])
-                    # ax[j,k].plot(np.arange(0,max_lag+1), 
-                    #              links_c[i0][i1,i2,j,1,1],'X', 
-                    #              c=clist[0])
-                    # ax[j,k].plot(np.arange(0,max_lag+1), 
-                    #              links_u[i0][i1,i2,j,1,1],'P', 
-                    #              c=clist[0])
-                    # ax[j,k].plot(np.arange(0,max_lag+1)[0], 
-                    #               links_r[i0][i1,i2,j,1,1,0] + links_c[i0][i1,i2,j,1,1,0] + links_u[i0][i1,i2,j,1,1,0],'s', 
-                    #               c=clist[i0])
                 if k == (j+1)%len(index_selection):
                     ax[j,k].plot(np.arange(0,max_lag+1), 
                                  links_r[i0][i1,i2,j,1,2],'o', 
@@ -1283,953 +1374,13 @@ for i0 in [2,0]:
                 ax[j,k].set_ylabel(var_list[j], fontsize=10)
     
 plt.tight_layout()
-# plt.savefig(dir_save_fig + "NrModelsWithLink_alpha"+repr(alpha_lev)+
-#             "_datacompare_"+meth_list[i1]+"_"+metric_list[i2]+".pdf")
+if saveplot:
+    if varincl == "std": #all
+        plt.savefig(dir_save_fig + "NrModelsWithLink_alpha"+repr(alpha_lev)+
+                    "_datacompare_"+meth_list[i1]+"_"+metric_list[i2]+".pdf")
+    elif varincl == "norho": #norho
+        plt.savefig(dir_save_fig + "NrModelsWithLink_norho_alpha"+
+                    repr(alpha_lev)+"_datacompare_"+meth_list[i1]+"_"+
+                    metric_list[i2]+".pdf")
 plt.show()
 
-#%% METHOD COMPARISON BASED ON LINKS
-
-methods_names = ["PCMCI, ParCorr", "PCMCI, RobustParCorr", \
-                 "PCMCI+, ParCorr", "PCMCI+, RobustParCorr"]
-
-# lag_list = [[1], [0,1], [0], [0,1], [1]]
-# lag_list = [[1], [0,1], [0,1], [0,1], [0,1]]
-lag_list = [[1], [1], [0,1], [1], [1]]
-
-fig, ax = plt.subplots(3,4, figsize=(18,10))
-
-for i1 in range(2):
-    for i2 in range(2):
-        for i in range(len(index_selection)):
-            # Split data in significant and non-significant
-            # data_sig = estimated_causal_effects[parcorr_theory[:,i,1,1,2,0] < p_thres,i]
-            # data_nonsig = estimated_causal_effects[parcorr_theory[:,i,1,1,2,0] > p_thres,i]
-            
-            ax[0,2*i1+i2].set_title(methods_names[2*i1+i2], fontsize = 14)
-            
-            # if i1 == 0:
-            #     where_check = [sum(x) for x in zip(where_right, where_contemp)]
-            # elif i1 == 1:
-            where_check = [sum(x) for x in zip(where_right, where_contemp, where_unclear)]
-            
-            # For each of the lags
-            for lag_ind in range(len(lag_list[i])):
-                # Get causal effect and lag
-                est_ce = estimated_causal_effects_list[:,:,lag_ind]
-                lg = lag_list[i][lag_ind]
-                
-                data_sig = [[] for j in range(3)]
-                data_nonsig = [[] for j in range(3)]
-                
-                # All 5 variables
-                data_sig[0] = est_ce[where_check[0][i1,i2,:,i,(i+1)%len(index_selection),lg] == 1,i]
-                data_nonsig[0] = est_ce[where_check[0][i1,i2,:,i,(i+1)%len(index_selection),lg] == 0,i]
-                
-                # Pairs
-                data_sig[1] = est_ce[where_check[1][i1,i2,:,i,(i+1)%len(index_selection),0,1,lg] == 1,i]
-                data_nonsig[1] = est_ce[where_check[1][i1,i2,:,i,(i+1)%len(index_selection),0,1,lg] == 0,i]
-                
-                # Theory
-                data_sig[2] = est_ce[where_check[2][i1,i2,:,i,1,2,lg] == 1,i]
-                data_nonsig[2] = est_ce[where_check[2][i1,i2,:,i,1,2,lg] == 0,i]
-            
-                for j in range(3):
-                    # Violin plots
-                    if not len(data_sig[j]) == 0:
-                        vio_sig = ax[j,2*i1+i2].violinplot(data_sig[j], positions = [i-0.3+lg*0.4])
-                        # Color of violin plots
-                        for pc in vio_sig['bodies']:
-                            pc.set_color(clist[i])
-                        for partname in ('cbars','cmins','cmaxes'):
-                            vio_sig[partname].set_edgecolor(clist[i])
-                    if not len(data_nonsig[j]) == 0:
-                        vio_nonsig = ax[j,2*i1+i2].violinplot(data_nonsig[j], positions = [i-0.1+lg*0.4])
-                        # Color of violin plots
-                        for pc in vio_nonsig['bodies']:
-                            pc.set_color('tab:gray')
-                        for partname in ('cbars','cmins','cmaxes'):
-                            vio_nonsig[partname].set_edgecolor('tab:gray')
-                        
-                    # Scatter plots
-                    scat_sig = ax[j,2*i1+i2].scatter((i-0.3+lg*0.4)*np.ones(len(data_sig[j])), data_sig[j], c='k')
-                    scat_nonsig = ax[j,2*i1+i2].scatter((i-0.1+lg*0.4)*np.ones(len(data_nonsig[j])), data_nonsig[j], 
-                                              c='tab:gray')
-                    
-                
-                    if i1 == 0 and i2 == 0:
-                        ax[j,0].set_ylabel(["All variables", "Pairs", "Theory"][j], fontsize = 14)
-                    # ax[j,2*i1+i2].text(-0.27+i,0.94, repr(len(data_sig))+"         " \
-                    #          +repr(len(data_nonsig)), fontsize = 14)
-                    ax[j,2*i1+i2].plot(np.arange(-1,6), np.zeros((7)), c='k')
-                    # if j == 2:
-                    #     ax[j,2*i1+i2].set_xticks(np.arange(len(index_selection)), link_names, fontsize=14)
-                    ax[j,2*i1+i2].set_yticks(np.arange(-1.5,1.6,0.5), np.arange(-1.5,1.6,0.5)) #, fontsize=14)
-                    ax[j,2*i1+i2].set_xlim([-0.5, len(index_selection)-0.5])
-                    ax[j,2*i1+i2].grid(True)
-                    
-# plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_comparemethods_incllag.pdf")
-plt.show()
-
-#%% COMPARE USED DATA ALL V THEORY: ARTICLE
-clist = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
-         'tab:brown', 'tab:pink']
-col_list = clist
-var_list = ["SPG", "SSS", "MLD", "SubT", "Rho"]
-# var_list = ["SPG", "SSS", "MLD", "SubT"]
-# col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
-
-
-# PCMCI+, RobustParCorr
-i1 = 1
-i2 = 1
-
-fig, ax = plt.subplots(2,len(index_selection), figsize=(20,9))
-for j in range(len(index_selection)):
-    for k in range(2):
-        # Set lines
-        ax[k,j].hlines(5,-1,max_lag+1, color='k', linestyle='-')
-        ax[k,j].hlines(10,-1,max_lag+1, color='k', linestyle=':')
-    
-    # Links including all 5 variables
-    # ax[0,j].plot(np.arange(-0.15,max_lag+0.5), links_r[0][i1,i2,j,j],'o', 
-    #              c=clist[0], ms=10)
-    # ax[0,j].plot(np.arange(-0.15,max_lag+0.5), links_l[0][i1,i2,j,j],'v', 
-    #              c=clist[0], ms=10)
-    # ax[0,j].plot(np.arange(-0.15,max_lag+0.5), links_c[0][i1,i2,j,j],'X', 
-    #              c=clist[0], ms=10)
-    # ax[0,j].plot(np.arange(-0.15,max_lag+0.5), links_u[0][i1,i2,j,j],'P', 
-    #              c=clist[0], ms=10)
-    
-    # ax[1,j].plot(np.arange(-0.15,max_lag+0.5), 
-    #              links_r[0][i1,i2,j,(j+1)%len(index_selection)],'o', 
-    #              c=clist[0], ms=10)
-    # ax[1,j].plot(np.arange(-0.15,max_lag+0.5), 
-    #              links_l[0][i1,i2,j,(j+1)%len(index_selection)],'v', 
-    #              c=clist[0], ms=10)
-    # ax[1,j].plot(np.arange(-0.15,max_lag+0.5), 
-    #              links_c[0][i1,i2,j,(j+1)%len(index_selection)],'X', 
-    #              c=clist[0], ms=10)
-    # ax[1,j].plot(np.arange(-0.15,max_lag+0.5), 
-    #              links_u[0][i1,i2,j,(j+1)%len(index_selection)],'P', 
-    #              c=clist[0], ms=10)
-    # ax[1,j].plot(np.arange(-0.15,max_lag+0.5)[0], 
-    #              links_r[0][i1,i2,j,(j+1)%len(index_selection),0] \
-    #                  + links_u[0][i1,i2,j,(j+1)%len(index_selection),0] \
-    #                  + links_c[0][i1,i2,j,(j+1)%len(index_selection),0],'s', 
-    #               c=clist[0], ms=10)
-   
-    # Links for theoretical links
-    ax[0,(j+1)%len(index_selection)].plot(np.arange(0.,max_lag+0.5), 
-                                          links_r[2][i1,i2,j,2,2],'o', 
-                                          c=clist[0], ms=10)
-    # ax[0,j].plot(np.arange(0.,max_lag+0.5), links_r[2][i1,i2,j,1,1],'o', 
-    #              c=clist[0], ms=10)
-    # ax[0,j].plot(np.arange(0.,max_lag+0.5), links_l[2][i1,i2,j,1,1],'v', 
-    #              c=clist[1], ms=10)
-    # ax[0,j].plot(np.arange(0.,max_lag+0.5), links_c[2][i1,i2,j,1,1],'X', 
-    #              c=clist[2], ms=10)
-    # ax[0,j].plot(np.arange(0.,max_lag+0.5), links_u[2][i1,i2,j,1,1],'P', 
-    #              c=clist[3], ms=10)
-
-    ax[1,j].plot(np.arange(0.,max_lag+0.5), links_r[2][i1,i2,j,1,2],'o', 
-                 c=clist[0], ms=10)
-    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], links_l[2][i1,i2,j,1,2,0],'v', 
-                  c=clist[1], ms=10)
-    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], links_c[2][i1,i2,j,1,2,0],'X', 
-                  c=clist[2], ms=10)
-    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], links_u[2][i1,i2,j,1,2,0],'P', 
-                  c=clist[3], ms=10)
-    ax[1,j].plot(np.arange(0.,max_lag+0.5)[0], 
-                 links_r[2][i1,i2,j,1,2,0] + links_c[2][i1,i2,j,1,2,0] \
-                     + links_u[2][i1,i2,j,1,2,0],'s', c=clist[4], ms=10)
-        
-    # Plot settings
-    for k in range(2):
-        ax[k,j].set_xlim([-1,max_lag+1])
-        ax[k,j].set_ylim([0,len(mod_list)+1])
-        ax[k,j].tick_params(labelsize=22)
-        ax[k,0].set_ylabel("Number of Models", fontsize=24)
-        ax[k,j].grid(True)
-    
-    ax[1,j].set_xlabel("Lag (years)", fontsize=24)
-    ax[0,j].set_title(var_list[j]+r"$\rightarrow$"+var_list[j], fontsize=24)
-    ax[1,j].set_title(var_list[j]+r"$\rightarrow$"+var_list[(j+1)%len(var_list)], 
-                      fontsize=24)
-    
-    # Change color of axes
-    plt.setp(ax[1,j].spines.values(), color=col_list[j], linewidth=4)
-    plt.setp([ax[1,j].get_xticklines(), ax[0,j].get_yticklines()], color=col_list[j])
-    
-plt.tight_layout()
-# plt.savefig(dir_save_fig + "NrModelsWithLink_alpha"+repr(alpha_lev)+"_"
-#             +meth_list[i1]+"_"+metric_list[i2]+"_paper.pdf")
-# plt.savefig(dir_save_fig + "NrModelsWithLink_norho_alpha"+repr(alpha_lev)+"_"
-#             +meth_list[i1]+"_"+metric_list[i2]+"_paper.pdf")
-plt.show()
-
-#%% CHECK WHICH MODELS
-
-lnk = 0
-
-for lag in [0,1]:
-    print("Lag: "+repr(lag))
-    print(len(np.array(mod_list)[where_right[2][i1,i2,:,lnk,1,2,lag]==1]))
-    print(np.array(mod_list)[where_right[2][i1,i2,:,lnk,1,2,lag]==1])
-    print(len(np.array(mod_list)[where_contemp[2][i1,i2,:,lnk,1,2,lag]==1]))
-    print(np.array(mod_list)[where_contemp[2][i1,i2,:,lnk,1,2,lag]==1])
-    print(len(np.array(mod_list)[where_unclear[2][i1,i2,:,lnk,1,2,lag]==1]))
-    print(np.array(mod_list)[where_unclear[2][i1,i2,:,lnk,1,2,lag]==1])
-    # print(len(np.array(mod_list)[where_left[2][i1,i2,:,lnk,1,2,lag]==1]))
-    # print(np.array(mod_list)[where_left[2][i1,i2,:,lnk,1,2,lag]==1])
-
-#%%
-
-# Get the models with a significant link
-where_check = [sum(x) for x in zip(where_right, where_contemp, 
-                                   where_unclear)]
-# Get the models with a significant link
-where_uc = [sum(x) for x in zip(where_contemp, where_unclear)]
-
-where_link = where_check[2][i1,i2,:,:,1,2,0] + where_check[2][i1,i2,:,:,1,2,1] + where_check[2][i1,i2,:,:,1,2,2]
-where_link[where_link == 2] = 1
-where_link[where_link == 3] = 1
-
-print(np.sum(where_check[2][i1,i2,:,:,1,2,0], axis=1))
-print(np.sum(where_check[2][i1,i2,:,:,1,2,1], axis=1))
-print(np.sum(where_check[2][i1,i2,:,:,1,2,0:2], axis=(1,2)))
-print(np.sum(where_uc[2][i1,i2,:,:,1,2,0], axis=1))
-print(np.sum(where_link, axis=1))
-
-print(np.sum(where_check[2][i1,i2,:,:,1,2,0], axis=0))
-print(np.sum(where_check[2][i1,i2,:,:,1,2,1], axis=0))
-print(np.sum(where_check[2][i1,i2,:,:,1,2,2], axis=0))
-print(np.sum(where_check[2][i1,i2,:,:,1,2,0:3], axis=(0,2)))
-print(np.sum(where_right[2][i1,i2,:,:,1,2,0], axis=0))
-print(np.sum(where_uc[2][i1,i2,:,:,1,2,0], axis=0))
-print(np.sum(where_link, axis=0))
-
-#%% VIOLIN PLOT: ARTICLE
-
-link_names = ["                Lag-1 \nSPG to SSS", 
-              "Lag-0       Lag-1 \nSSS to MLD", 
-              "Lag-0       Lag-1 \nMLD to SubT", 
-              "Lag-0       Lag-1 \nSubT to Rho", 
-              "Lag-0       Lag-1 \nRho to SPG"]
-col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
-# link_names = ["                Lag-1 \nSPG to SSS", 
-#               "Lag-0       Lag-1 \nSSS to MLD", 
-#               "Lag-0       Lag-1 \nMLD to SubT", 
-#               "Lag-1       Lag-2 \nSubT to SPG"]
-# col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
-
-alpha = 0.4
-
-# face_list = [[] for i in range(len(col_list))]
-# edge_list = [[] for i in range(len(col_list))]
-# for i in range(len(col_list)):
-#     face_list[i] = mpl.colors.to_rgb(col_list[i]) + (alpha,)
-#     edge_list[i] = mpl.colors.to_rgb(col_list[i]) + (0.99,)
-
-# PCMCI+, RobustParCorr
-i1 = 1
-i2 = 1
-    
-# lag_list = [[1], [0,1], [0], [0,1], [1]]
-lag_list = [[1], [0,1], [0,1], [0,1], [0,1]]
-# lag_list = [[1], [1], [0,1], [1], [1]]
-# lag_list = [[1], [0,1], [0,1], [1,2]]
-
-fig = plt.figure(figsize=(15,8))
-
-for i in range(len(index_selection)):
-    
-    # Get the models with a significant link
-    where_check = [sum(x) for x in zip(where_right, where_contemp, 
-                                        where_unclear)]
-    # where_check = where_right
-    
-    # For each of the lags
-    for lag_ind in range(len(lag_list[i])):
-        # Get causal effect and lag
-        lg = lag_list[i][lag_ind]
-        est_ce = estimated_causal_effects_list[:,:,lag_ind]
-        
-        # Theory
-        data_sig = est_ce[where_check[2][i1,i2,:,i,1,2,lg] == 1,i]
-        data_nonsig = est_ce[where_check[2][i1,i2,:,i,1,2,lg] == 0,i]
-        
-        print(np.array(mod_list)[where_check[2][i1,i2,:,i,1,2,lg] == 1])
-        
-        if lag_list[i][-1] == 2:
-            lg = lg - 1
-            
-        # Violin plots
-        vio_sig = plt.violinplot(data_sig, positions = [2*i+lg-0.2])
-        vio_nonsig = plt.violinplot(data_nonsig, positions = [2*i+lg+0.2])
-        # vio_all = plt.violinplot(est_ce[:,i], positions = [2*i+lg-0.2])
-        
-        # Color of violin plots
-        for pc in vio_sig['bodies']:
-            pc.set_color(col_list[i])
-            pc.set_linewidth(2)
-            pc.set_alpha(0.4)
-            if lg == 1:
-                pc.set_hatch('xx')
-        for pc in vio_nonsig['bodies']:
-            pc.set_color('tab:gray')
-            pc.set_linewidth(2)
-            pc.set_alpha(0.4)
-            if lg == 1:
-                htch = pc.set_hatch('xx')
-        # for pc in vio_all['bodies']:
-        #     pc.set_facecolor('white')
-        #     pc.set_edgecolor(col_list[i])
-        #     pc.set_linewidth(2)
-        #     pc.set_linestyle(':')
-                
-        for partname in ('cbars','cmins','cmaxes'):
-            vio_sig[partname].set_edgecolor(col_list[i])
-            vio_sig[partname].set_linewidth(2)
-            vio_nonsig[partname].set_edgecolor('tab:gray')
-            vio_nonsig[partname].set_linewidth(2)
-            
-        # Scatter plots
-        scat_sig = plt.scatter((2*i+lg-0.2)*np.ones(len(data_sig)), 
-                               data_sig, c='k')
-        scat_nonsig = plt.scatter((2*i+lg+0.2)*np.ones(len(data_nonsig)), 
-                                  data_nonsig, c='tab:gray')
-        
-        plt.text(-0.3+2*i+lg,1.25, repr(len(data_sig))+"   " \
-                 +repr(len(data_nonsig)), fontsize = 18)
-            
-plt.plot(np.arange(-1,12), np.zeros((13)), c='k')
-plt.xlim([0, 2*len(index_selection)-0.5])
-# plt.xlim([-0.5, 2*len(index_selection)-0.5])
-plt.ylim([-1.,1.2])
-plt.xticks(np.arange(0.5,2*len(index_selection),2), link_names, fontsize=20)
-plt.yticks(fontsize=18)
-plt.ylabel("Causal Effect", fontsize=20)
-plt.grid()
-plt.tight_layout()
-
-# plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_"
-#             +meth_list[i1]+"_"+metric_list[i2]+"_paper_new.png", dpi=300)
-# plt.savefig(dir_save_fig + "Causaleffect_norho_alpha"+repr(alpha_lev)+"_"
-#             +meth_list[i1]+"_"+metric_list[i2]+"_new.png", dpi=300)
-plt.show()
-
-#%% SPG TO ITSELF LAG
-"""
-CHECK!!
-"""
-
-# col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
-# link_names = ["Lag-1 \nSSS", 
-#               "Lag-1 \nMLD", 
-#               "Lag-1       Lag-2 \nSubT", 
-#               "Lag-1 \nRho",
-#               "Lag-1       Lag-2       Lag-3       Lag-4       Lag-5 \nSPG"]
-col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:purple']
-link_names = ["Lag-1 \nSSS", 
-              "Lag-1 \nMLD", 
-              "Lag-1       Lag-2 \nSubT",
-              "Lag-1       Lag-2 \nSPG"]
-
-alpha = 0.4
-
-# face_list = [[] for i in range(len(col_list))]
-# edge_list = [[] for i in range(len(col_list))]
-# for i in range(len(col_list)):
-#     face_list[i] = mpl.colors.to_rgb(col_list[i]) + (alpha,)
-#     edge_list[i] = mpl.colors.to_rgb(col_list[i]) + (0.99,)
-
-# PCMCI+, RobustParCorr
-i1 = 1
-i2 = 1
-# i=0
-    
-# lag_list = [[1], [0,1], [0], [0,1], [1]]
-# lag_list = [[1], [1], [1,2], [1], [1,2,3,4,5]]
-# lag_list = [[1], [1], [0,1], [1], [1]]
-lag_list = [[1,2], [1], [1,2], [1,2,3,4,5]]
-
-# posit_list = [[0], [1], [2,3], [4], [5,6,7,8,9]]
-posit_list = [[0,1], [2], [3,4], [5,6,7,8,9]]
-
-fig = plt.figure(figsize=(15,8))
-# Get the models with a significant link
-where_check = [sum(x) for x in zip(where_right, where_contemp, 
-                                    where_unclear)]
-# where_check = where_right
-
-# For each of the lags
-# for i in range(len(index_selection)):
-    # lag_ind = 1
-for i in range(len(index_selection)):
-    for lag_ind in range(len(lag_list[i])):
-        # Get causal effect and lag
-        lg = lag_list[i][lag_ind]
-        est_ce = estimated_causal_effects_list[:,:,lag_ind]
-        
-        # Theory
-        # data_sig = est_ce[where_check[2][i1,i2,:,i,1,1,lg] == 1,i]
-        # data_nonsig = est_ce[where_check[2][i1,i2,:,i,1,1,lg] == 0,i]
-        # print(np.array(mod_list)[where_check[2][i1,i2,:,i,1,1,lg] == 1])
-        
-        # Violin plots
-        # vio_sig = plt.violinplot(data_sig, positions = [posit_list[i][lag_ind]-0.2])
-        # vio_nonsig = plt.violinplot(data_nonsig, positions = [posit_list[i][lag_ind]+0.2])
-        # vio_all = plt.violinplot(est_ce[:,i], positions = [2*i+lg-0.2])
-        
-        data_sig = est_ce[where_check[2][i1,i2,:,i,2,2,lg] == 1,i]
-        vio_sig = plt.violinplot(data_sig, positions = [posit_list[i][lag_ind]-0.2])
-        scat_sig = plt.scatter((posit_list[i][lag_ind]-0.2)*np.ones(len(data_sig)), 
-                               data_sig, c='k')
-        if not (i == 2 and lag_ind == 0):
-            data_nonsig = est_ce[where_check[2][i1,i2,:,i,2,2,lg] == 0,i]
-            vio_nonsig = plt.violinplot(data_nonsig, positions = [posit_list[i][lag_ind]+0.2])
-            scat_nonsig = plt.scatter((posit_list[i][lag_ind]+0.2)*np.ones(len(data_nonsig)), 
-                                      data_nonsig, c='tab:gray')
-        else:
-            data_nonsig = []
-        
-        print(np.array(mod_list)[where_check[2][i1,i2,:,i,2,2,lg] == 1])
-        
-        # if lag_list[i][-1] == 2:
-        #     lg = lg - 1
-            
-        
-        # Color of violin plots
-        for pc in vio_sig['bodies']:
-            pc.set_color(col_list[i])
-            pc.set_linewidth(2)
-            pc.set_alpha(0.4)
-            if lg == 2:
-                pc.set_hatch('xx')
-            if lg == 3:
-                pc.set_hatch('//')
-            if lg == 4:
-                pc.set_hatch('--')
-            if lg == 5:
-                pc.set_hatch('++')
-        for pc in vio_nonsig['bodies']:
-            pc.set_color('tab:gray')
-            pc.set_linewidth(2)
-            pc.set_alpha(0.4)
-            if lg == 2:
-                pc.set_hatch('xx')
-            if lg == 3:
-                pc.set_hatch('//')
-            if lg == 4:
-                pc.set_hatch('--')
-            if lg == 5:
-                pc.set_hatch('++')
-        # for pc in vio_all['bodies']:
-        #     pc.set_facecolor('white')
-        #     pc.set_edgecolor(col_list[i])
-        #     pc.set_linewidth(2)
-        #     pc.set_linestyle(':')
-                
-        for partname in ('cbars','cmins','cmaxes'):
-            vio_sig[partname].set_edgecolor(col_list[i])
-            vio_sig[partname].set_linewidth(2)
-            vio_nonsig[partname].set_edgecolor('tab:gray')
-            vio_nonsig[partname].set_linewidth(2)
-            
-        # Scatter plots
-        # scat_sig = plt.scatter((posit_list[i][lag_ind]-0.2)*np.ones(len(data_sig)), 
-        #                        data_sig, c='k')
-        # scat_nonsig = plt.scatter((posit_list[i][lag_ind]+0.2)*np.ones(len(data_nonsig)), 
-        #                           data_nonsig, c='tab:gray')
-        
-        plt.text(-0.3+posit_list[i][lag_ind],1.25, repr(len(data_sig))+"   " \
-                 +repr(len(data_nonsig)), fontsize = 18)
-            
-plt.plot(np.arange(-1,14), np.zeros((15)), c='k')
-# plt.xlim([-0.5, 2*len(index_selection)-0.5])
-plt.ylim([-1.,1.2])
-plt.xlim([-0.5, 9.5])
-plt.xticks(np.array([0.5,2,3.5,7]), link_names, fontsize=20)
-# plt.xlim([-0.5, 5.5])
-# plt.xticks(np.array([0,1,2.5,4.5]), link_names, fontsize=20)
-plt.yticks(fontsize=18)
-plt.ylabel("Causal Effect", fontsize=20)
-plt.grid()
-plt.tight_layout()
-
-# plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_"
-#             +meth_list[i1]+"_"+metric_list[i2]+"_auto-effect_paper.png", dpi=300)
-# plt.savefig(dir_save_fig + "Causaleffect_norho_alpha"+repr(alpha_lev)+"_"
-#             +meth_list[i1]+"_"+metric_list[i2]+"_auto-effect.png", dpi=300)
-plt.show()
-
-#%% MODEL VALUES: ARTICLE SI
-
-link_names = ["                Lag-1 \nSPG to SSS", 
-              "Lag-0       Lag-1 \nSSS to MLD", 
-              "Lag-0       Lag-1 \nMLD to SubT", 
-              "Lag-0       Lag-1 \nSubT to Rho",
-              "Lag-0       Lag-1 \nRho to SPG"]
-col_list = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple']
-
-col_modlist = ['tab:blue','tab:orange','tab:orange','tab:green','tab:green',
-                'tab:green','tab:green','tab:red','tab:red','tab:purple',
-                'tab:purple','tab:brown','tab:brown','tab:brown','tab:brown',
-                'tab:brown','tab:pink','tab:pink','tab:gray','tab:gray',
-                'tab:olive','tab:olive','gold','chocolate','tab:cyan','tab:cyan',
-                'tab:cyan','black','lightgreen','lightgreen','navy','navy']
-mark_modlist = ['o','o','X','o','X','v','P','o','X','o','X','o','X','v','P',
-                'd','o','X','o','X','o','X','o','o','o','X','v','o','o','X',
-                'o','X']
-lag_list = [[1], [0,1], [0,1], [0,1], [0,1]]
-
-# link_names = ["                Lag-1 \nSPG to SSS", 
-#               "Lag-0       Lag-1 \nSSS to MLD", 
-#               "Lag-0       Lag-1 \nMLD to SubT", 
-#               "Lag-1       Lag-2 \nSubT to SPG"]
-# col_modlist = ['tab:blue','tab:orange','tab:orange','tab:green','tab:green',
-#                 'tab:green','tab:green','tab:red','tab:red','tab:purple',
-#                 'tab:purple','tab:brown','tab:brown','tab:brown','tab:brown',
-#                 'tab:brown','tab:brown','tab:pink','tab:pink','tab:gray','tab:gray',
-#                 'tab:olive','tab:olive','gold','chocolate','tab:cyan','tab:cyan',
-#                 'tab:cyan','black','lightgreen','lightgreen','navy','navy']
-# mark_modlist = ['o','o','X','o','X','v','P','o','X','o','X','o','X','v','P',
-#                 'd','*','o','X','o','X','o','X','o','o','o','X','v','o','o','X',
-#                 'o','X']
-# lag_list = [[1], [0,1], [0,1], [1,2]]
-
-# PCMCI+, RobustParCorr
-i1 = 1
-i2 = 1
-
-col_modsig = np.array(col_modlist.copy())
-
-# Get color when significant
-sig_list = np.array([where_check[2][i1,i2,:,i,1,2,:] 
-                      for i in range(len(index_selection))])
-# allsig = np.array([all(sig_list[:,m] < p_thres) for m in range(len(mod_list))])
-# col_modsig[allsig==False] = None
-
-# Based on data being significant when not correcting for confounding factors
-fig = plt.figure(figsize=(17,11))
-
-# Scatter plots
-for m in range(len(mod_list)):
-    for i in range(len(index_selection)):
-        
-        # For each of the lags
-        for lag_ind in range(len(lag_list[i])):
-            # Get causal effect and lag
-            est_ce = estimated_causal_effects_list[:,:,lag_ind]
-            lg = lag_list[i][lag_ind]
-            
-            if lag_list[i][-1] == 2:
-                lg = lg - 1
-            
-            if lg == 0:
-                col_face = np.array(col_modlist.copy())
-            elif lg == 1:
-                col_face = len(mod_list) * ['white']
-            
-            if i == 1 and lg == 0:
-                plt.scatter(np.arange(2*i+lg-0.3,2*i+lg+0.299,0.6/len(mod_list))[m], 
-                            est_ce[m,i], marker=mark_modlist[m],
-                            edgecolors=col_modlist[m], facecolors=col_face[m],
-                            label=mod_list[m], s=120)
-            else:
-                plt.scatter(np.arange(2*i+lg-0.3,2*i+lg+0.299,0.6/len(mod_list))[m], 
-                            est_ce[m,i], marker=mark_modlist[m],
-                            edgecolors=col_modlist[m], facecolors=col_face[m],
-                            s=120)
-
-plt.plot(np.arange(-1,12), np.zeros((13)), c='k')
-
-plt.xlim([0, 2*len(index_selection)-0.5])
-plt.ylim([-1.,1.2])
-plt.ylabel("Causal Effect", fontsize=20)
-plt.xticks(np.arange(0.5,2*len(index_selection),2), link_names, fontsize=20)
-plt.yticks(fontsize=18)
-plt.grid()
-plt.legend(fontsize=14, ncols=4, loc='upper right', bbox_to_anchor=(0.995, 1.34))
-plt.tight_layout()
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha"+repr(alpha_lev)+"_alltheory.pdf")
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha"+repr(alpha_lev)+"_inclparent.pdf")
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha.pdf")
-# plt.savefig(dir_save_fig + "Causaleffect_modelscatter_alpha"+repr(alpha_lev)+
-#             "_"+meth_list[i1]+"_"+metric_list[i2]+"_paper.png", dpi=300)
-# plt.savefig(dir_save_fig + "Causaleffect_norho_modelscatter_alpha"+repr(alpha_lev)+
-#             "_"+meth_list[i1]+"_"+metric_list[i2]+"_paper_new.png", dpi=300)
-plt.show()
-
-#%%
-
-i0 = 0
-
-for i1 in range(2):
-    for i2 in range(2):
-        # Based on data being significant when not correcting for confounding factors
-        fig = plt.figure(figsize=(12,8))
-        
-        for i in range(len(index_selection)):
-            # Split data in significant and non-significant
-            # data_sig = estimated_causal_effects[parcorr_theory[:,i,1,1,2,0] < p_thres,i]
-            # data_nonsig = estimated_causal_effects[parcorr_theory[:,i,1,1,2,0] > p_thres,i]
-            
-            # All 5 variables
-            # data_sig = estimated_causal_effects[parcorr_all[0][i1,i2,:,1,i,(i+1)%len(index_selection),0] < p_thres,i]
-            # if not i == 1:
-            #     data_nonsig = estimated_causal_effects[parcorr_all[0][i1,i2,:,1,i,(i+1)%len(index_selection),0] > p_thres,i]
-            
-            # Theory
-            data_sig = estimated_causal_effects[parcorr_all[2][i1,i2,:,i,1,1,2,0] < p_thres,i]
-            data_nonsig = estimated_causal_effects[parcorr_all[2][i1,i2,:,i,1,1,2,0] > p_thres,i]
-            
-            # Violin plots
-            vio_sig = plt.violinplot(data_sig, positions = [i-0.2])
-            vio_nonsig = plt.violinplot(data_nonsig, positions = [i+0.2])
-            
-            # Scatter plots
-            scat_sig = plt.scatter((i-0.2)*np.ones(len(data_sig)), data_sig, c='k')
-            scat_nonsig = plt.scatter((i+0.2)*np.ones(len(data_nonsig)), data_nonsig, 
-                                      c='tab:gray')
-            
-            # Color of violin plots
-            for pc in vio_sig['bodies']:
-                pc.set_color(col_list[i])
-            for pc in vio_nonsig['bodies']:
-                pc.set_color('tab:gray')
-            for partname in ('cbars','cmins','cmaxes'):
-                vio_sig[partname].set_edgecolor(col_list[i])
-                vio_nonsig[partname].set_edgecolor('tab:gray')
-        
-            plt.text(-0.27+i,0.94, repr(len(data_sig))+"         " \
-                     +repr(len(data_nonsig)), fontsize = 14)
-        
-        plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-        plt.xticks(np.arange(len(index_selection)), link_names, fontsize=14)
-        plt.yticks(fontsize=14)
-        plt.xlim([-0.5, len(index_selection)-0.5])
-        plt.grid()
-        # plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_inclparent.pdf")
-        plt.show()
-
-#%%
-# Based on data being significant when including all factors
-fig = plt.figure(figsize=(12,8))
-
-for i in range(len(index_selection)):
-    # Split data in significant and non-significant
-    data_sig = estimated_causal_effects[ \
-                    parcorr[:,1,i,(i+1)%len(index_selection),0] < p_thres,i]
-    data_nonsig = estimated_causal_effects[ \
-                    parcorr[:,1,i,(i+1)%len(index_selection),0] > p_thres,i]
-    
-    # Violin plots
-    vio_sig = plt.violinplot(data_sig, positions = [i-0.2])
-    if len(data_nonsig) > 0:
-        vio_nonsig = plt.violinplot(data_nonsig, positions = [i+0.2])
-    
-    # Scatter plots
-    scat_sig = plt.scatter((i-0.2)*np.ones(len(data_sig)), data_sig, c='k')
-    scat_nonsig = plt.scatter((i+0.2)*np.ones(len(data_nonsig)), data_nonsig, 
-                              c='tab:gray')
-    
-    # Color of violin plots
-    for pc in vio_sig['bodies']:
-        pc.set_color(col_list[i])
-    for pc in vio_nonsig['bodies']:
-        pc.set_color('tab:gray')
-    for partname in ('cbars','cmins','cmaxes'):
-        vio_sig[partname].set_edgecolor(col_list[i])
-        vio_nonsig[partname].set_edgecolor('tab:gray')
-
-    plt.text(-0.27+i,0.94, repr(len(data_sig))+"         " \
-             +repr(len(data_nonsig)), fontsize = 14)
-
-plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-plt.xticks(np.arange(len(index_selection)), link_names, fontsize=14)
-plt.yticks(fontsize=14)
-plt.xlim([-0.5, len(index_selection)-0.5])
-plt.grid()
-# plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_allsig.pdf")
-plt.show()
-
-#%%
-
-# sig_list = np.array([parcorr[:,1,i,(i+1)%len(index_selection),0] 
-#                      for i in range(len(index_selection))])
-# allsig = np.array([all(sig_list[:,m] < p_thres) for m in range(len(mod_list))])
-for i1 in range(2):
-    for i2 in range(2):
-        sig_list = np.array([parcorr_all[2][i1,i2,:,i,1,1,2,0] 
-                              for i in range(len(index_selection))])
-        # sig_list = np.array([parcorr_theory_gpdc[:,i,1,1,2,0] 
-        #                       for i in range(len(index_selection))])
-        allsig = np.array([all(sig_list[:,m] < p_thres) for m in range(len(mod_list))])
-        
-        # Based on data being significant when including all factors
-        fig = plt.figure(figsize=(12,8))
-        
-        for i in range(len(index_selection)):
-            # Split data in significant and non-significant
-            data_sig = estimated_causal_effects[allsig == True,i]
-            data_nonsig = estimated_causal_effects[allsig == False,i]
-            
-            # Violin plots
-            vio_sig = plt.violinplot(data_sig, positions = [i-0.2])
-            if len(data_nonsig) > 0:
-                vio_nonsig = plt.violinplot(data_nonsig, positions = [i+0.2])
-            
-            # Scatter plots
-            scat_sig = plt.scatter((i-0.2)*np.ones(len(data_sig)), data_sig, c='k')
-            scat_nonsig = plt.scatter((i+0.2)*np.ones(len(data_nonsig)), data_nonsig, 
-                                      c='tab:gray')
-            
-            # Color of violin plots
-            for pc in vio_sig['bodies']:
-                pc.set_color(col_list[i])
-            for pc in vio_nonsig['bodies']:
-                pc.set_color('tab:gray')
-            for partname in ('cbars','cmins','cmaxes'):
-                vio_sig[partname].set_edgecolor(col_list[i])
-                vio_nonsig[partname].set_edgecolor('tab:gray')
-        
-            plt.text(-0.27+i,0.94, repr(len(data_sig))+"         " \
-                     +repr(len(data_nonsig)), fontsize = 14)
-        
-        plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-        plt.xticks(np.arange(len(index_selection)), link_names, fontsize=14)
-        plt.yticks(fontsize=14)
-        plt.xlim([-0.5, len(index_selection)-0.5])
-        plt.grid()
-        # plt.savefig(dir_save_fig + "Causaleffect_alpha"+repr(alpha_lev)+"_alltheory.pdf")
-        plt.show()
-
-#%% Which models
-
-modlist = np.array(mod_list)
-
-modlist_theory = [[[],[]] for i in range(len(index_selection))]
-modlist_sig = [[[],[]] for i in range(len(index_selection))]
-modlist_allsig = [[],[]]
-
-for i in range(len(index_selection)):
-    modlist_theory[i][0] = modlist[parcorr_theory[:,i,1,1,2,0] < p_thres]
-    modlist_theory[i][1] = modlist[parcorr_theory[:,i,1,1,2,0] > p_thres]
-    
-    modlist_sig[i][0] = modlist[parcorr[:,1,i,(i+1)%len(index_selection),0] < p_thres]
-    modlist_sig[i][1] = modlist[parcorr[:,1,i,(i+1)%len(index_selection),0] > p_thres]
-
-modlist_allsig[0] = modlist[allsig == True]
-modlist_allsig[1] = modlist[allsig == False]
-
-for i in range(len(index_selection)):
-    print(link_names[i])
-    for j in range(2):
-        print(["Link", "No link"][j])
-        print(modlist_theory[i][j])
-        print(modlist_sig[i][j])
-
-print("All")
-for j in range(2):
-    print(["Link", "No link"][j])
-    print(modlist_allsig[j])
-    for i in range(len(index_selection)):
-        # Split data in significant and non-significant
-        data_sig = estimated_causal_effects[ \
-                        allsig == True,i]
-        data_nonsig = estimated_causal_effects[ \
-                        allsig == False,i]
-
-#%%
-
-# sig_list = np.array([parcorr[:,i,1,1,2,0] 
-#                       for i in range(len(index_selection))])
-# allsig = np.array([all(sig_list[:,m] < p_thres) for m in range(len(mod_list))])
-
-# Based on data being significant when including all factors
-fig = plt.figure(figsize=(24,8))
-
-for i in range(len(index_selection)):
-    # Split data in significant and non-significant
-    data_dir_sig = estimated_causal_effects_lag[ \
-                    parcorr[:,1,i,(i+1)%len(index_selection),0] < p_thres,i,0]
-    data_dir_nonsig = estimated_causal_effects_lag[ \
-                    parcorr[:,1,i,(i+1)%len(index_selection),0] > p_thres,i,0]
-    data_lag_sig = estimated_causal_effects_lag[ \
-                    parcorr[:,1,i,(i+1)%len(index_selection),1] < p_thres,i,1]
-    data_lag_nonsig = estimated_causal_effects_lag[ \
-                    parcorr[:,1,i,(i+1)%len(index_selection),1] > p_thres,i,1]
-    
-    
-    # Violin plots
-    vio_dir_sig = plt.violinplot(data_dir_sig, positions = [i-0.2])
-    if len(data_dir_nonsig) > 0:
-        vio_dir_nonsig = plt.violinplot(data_dir_nonsig, positions = [i+0.2])
-    vio_lag_sig = plt.violinplot(data_lag_sig, 
-                                 positions = [len(index_selection)+i-0.2])
-    vio_lag_nonsig = plt.violinplot(data_lag_nonsig, 
-                                    positions = [len(index_selection)+i+0.2])
-    
-    # Scatter plots
-    scat_dir_sig = plt.scatter((i-0.2)*np.ones(len(data_dir_sig)), data_dir_sig, 
-                               c='k')
-    scat_dir_nonsig = plt.scatter((i+0.2)*np.ones(len(data_dir_nonsig)), 
-                                  data_dir_nonsig, c='tab:gray')
-    scat_lag_sig = plt.scatter((len(index_selection)+i-0.2)*np.ones(len(data_lag_sig)), 
-                               data_lag_sig, c='k')
-    scat_lag_nonsig = plt.scatter((len(index_selection)+i+0.2)*np.ones(len(data_lag_nonsig)), 
-                                  data_lag_nonsig, c='tab:gray')
-     
-    # Color of violin plots
-    for pc in vio_dir_sig['bodies']:
-        pc.set_color(col_list[i])
-    for pc in vio_dir_nonsig['bodies']:
-        pc.set_color('tab:gray')
-    for pc in vio_lag_sig['bodies']:
-        pc.set_color(col_list[i])
-    for pc in vio_lag_nonsig['bodies']:
-        pc.set_color('tab:gray')
-    for partname in ('cbars','cmins','cmaxes'):
-        vio_dir_sig[partname].set_edgecolor(col_list[i])
-        vio_dir_nonsig[partname].set_edgecolor('tab:gray')
-        vio_lag_sig[partname].set_edgecolor(col_list[i])
-        vio_lag_nonsig[partname].set_edgecolor('tab:gray')
- 
-     # plt.text(-0.27+i,0.94, repr(len(data_sig))+"         " \
-     #          +repr(len(data_nonsig)), fontsize = 14)
-
-plt.plot(np.arange(-1,12), np.zeros((13)), c='k')
-plt.xticks(np.arange(2*len(index_selection)), 
-           np.array([link_names, link_names]).flatten(), fontsize=14)
-plt.yticks(fontsize=14)
-plt.xlim([-0.5, 2*len(index_selection)-0.5])
-plt.grid()
-# plt.savefig(dir_save_fig + "Causaleffect_lag1_alpha"+repr(alpha_lev)+".pdf")
-plt.show()
-
-
-#%% Load Data gpdc
-
-# # Initialise correlations, partial correlations and graphs
-# corr_theory_gpdc = np.empty((len(mod_list),len(index_selection),2,3,3,max_lag+1))
-# parcorr_theory_gpdc = np.empty((len(mod_list),len(index_selection),2,3,3,max_lag+1))
-# graph_list_theory_gpdc = [[[] for i in range(len(index_selection))] 
-#               for m in range(len(mod_list))]
-
-# # For each model
-# for m in range(len(mod_list)):
-#     res_gpdc = np.load(dir_save_data+"/gpdc_models/causaldiscovery_gpdc_theory_"
-#                        +mod_list[m]+".npz")
-#     corr_theory_gpdc[m] = res_gpdc['corr']
-#     parcorr_theory_gpdc[m] = res_gpdc['parcorr']
-#     graph_list_theory_gpdc[m] = res_gpdc['graph']
-
-# # To array
-# graph_theory_gpdc = np.array(graph_list_theory_gpdc)
-
-#%% MODELS WITH LINKS
-# Identify where each model has a link (1)
-# where_right = np.where(graph == '-->',1,0)
-# where_contemp = np.where(graph[:,:,:,0] == 'o-o',1,0)
-
-# where_2p_right = np.where(graph_2p == '-->',1,0)
-# where_2p_contemp = np.where(graph_2p[:,:,:,:,:,0] == 'o-o',1,0)
-
-# where_theory_right = np.where(graph_theory[:,:,1::,1::] == '-->',1,0)
-# where_theory_contemp = np.where(graph_theory[:,:,1::,1:,0] == 'o-o',1,0)
-
-# # where_theory_gpdc_right = np.where(graph_theory_gpdc[:,:,1::,1::] == '-->',1,0)
-# # where_theory_gpdc_contemp = np.where(graph_theory_gpdc[:,:,1::,1:,0] == 'o-o',1,0)
-
-# # Sum to obtain to number of models with a link
-# links = np.sum(where_right, axis=0)
-# links[:,:,0] = np.sum(where_contemp, axis=0)
-
-# links_2p = np.sum(where_2p_right, axis=0)
-# links_2p[:,:,:,:,0] = np.sum(where_2p_contemp, axis=0)
-
-# links_theory = np.sum(where_theory_right, axis=0)
-# links_theory[:,:,:,0] = np.sum(where_theory_contemp, axis=0)
-
-# links_theory_gpdc = np.sum(where_theory_gpdc_right, axis=0)
-# links_theory_gpdc[:,:,:,0] = np.sum(where_theory_gpdc_contemp, axis=0)
-
-#%% Scatter plot
-
-# link_names = ["SPG to SSS", "SSS to MLD", "MLD to Sub. Th.", 
-#               "Sub. Th. to Density", "Density to SPG"]
-
-# p_thres = alpha_lev
-
-
-# fig = plt.figure(figsize=(12,8))
-# for i in range(len(index_selection)):
-#     col_pcorr = np.where(parcorr_theory[:,i,1,0,1,0] < p_thres, 'tab:purple', 'tab:gray')
-#     plt.scatter(i * np.ones(len(mod_list)), estimated_causal_effects[:,i],
-#                 c=col_pcorr)
-
-# plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-# plt.xticks(np.arange(len(index_selection)), link_names)
-# plt.xlim([-0.5, len(index_selection)-0.5])
-# plt.grid()
-# plt.show()
-
-# fig = plt.figure(figsize=(12,8))
-# for i in range(len(index_selection)):
-#     col_pcorr = np.where(parcorr[:,0,i,(i+1)%len(index_selection),0] < pval, 'tab:purple', 'tab:gray')
-#     plt.scatter(i * np.ones(len(mod_list)), estimated_causal_effects[:,i],
-#                 c=col_pcorr)
-
-# plt.plot(np.arange(-1,6), np.zeros((7)), c='k')
-# plt.xticks(np.arange(len(index_selection)), link_names)
-# plt.xlim([-0.5, len(index_selection)-0.5])
-# plt.grid()
-# plt.show()
-
-#%% Plot Number of Links
-
-# clist = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple',
-#          'tab:brown', 'tab:pink']
-
-# fig, ax = plt.subplots(len(index_selection),len(index_selection), 
-#                        figsize=(10,10))
-
-# for i in range(len(index_selection)):
-#     for j in range(len(index_selection)):
-#         ax[i,j].hlines(5,-1,max_lag+1, color='k', linestyle='-')
-#         ax[i,j].hlines(10,-1,max_lag+1, color='k', linestyle=':')
-#         # Links including all 5 variables
-#         ax[i,j].plot(np.arange(0,max_lag+1), links[i,j],'o', c='tab:blue')
-#         # Links focussing on pairwise links
-#         # if j == i:
-#         #     for k in range(len(index_selection)):
-#         #         ax[i,j].plot(np.arange(0,max_lag+1), links_2p[i,k,0,0],'X', c=clist[k+2], markerfacecolor='none')
-#         # elif i < j:
-#         #     ax[i,j].plot(np.arange(0,max_lag+1), links_2p[i,j,0,1],'X', c='tab:green')
-#         # elif i > j:
-#         #     ax[i,j].plot(np.arange(0,max_lag+1), links_2p[i,j,1,0],'X', c='tab:green')
-#         # Links focussing on theoretical links
-#         if j == i:
-#             ax[i,j].plot(np.arange(0,max_lag+1), links_theory[i,0,0],'v', c='tab:orange')
-#         if j == (i+1)%len(index_selection):
-#             ax[i,j].plot(np.arange(0,max_lag+1), links_theory[i,0,1],'v', c='tab:orange')
-#         # Links focussing on theoretical links using gpdc
-#         # if j == i:
-#         #     ax[i,j].plot(np.arange(0,max_lag+1), links_theory_gpdc[i,0,0],'^', c='tab:purple')
-#         # if j == (i+1)%len(index_selection):
-#         #     ax[i,j].plot(np.arange(0,max_lag+1), links_theory_gpdc[i,0,1],'^', c='tab:purple')
-#         # Plot settings
-#         ax[i,j].set_xlim([-1,max_lag+1])
-#         ax[i,j].set_ylim([0,len(mod_list)+1])
-#         ax[i,j].grid()
-#         if i == len(index_selection)-1:
-#             ax[i,j].set_xlabel("Lag (years)", fontsize=8)
-#         if i == 0:
-#             ax[i,j].set_title(index_selection[j], fontsize=10)
-#         if j == 0:
-#             ax[i,j].set_ylabel(index_selection[i], fontsize=10)
-
-# plt.tight_layout()
-# # plt.savefig(dir_save_fig + "NrModelsWithLink_alpha"+repr(alpha_lev)+".pdf")
-# plt.show()
