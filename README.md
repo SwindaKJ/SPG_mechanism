@@ -1,4 +1,5 @@
 Python files for causal inference and causal effect computation to validate the theoretical mechanism of subpolar gyre variability.
+DOI: 10.5281/zenodo.13449752
 
 Multi-model mean and model mixed layer depth count computation:
 In meanmodel_fields.py there is code to compute the (multi-)model means, as well as code to study the mixed layer depth in more detail, e.g. count where it exceeds 1000m.
